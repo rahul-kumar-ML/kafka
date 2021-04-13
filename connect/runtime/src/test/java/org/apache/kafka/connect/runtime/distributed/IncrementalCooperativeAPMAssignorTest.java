@@ -46,8 +46,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeConnectProtocol.CONNECT_PROTOCOL_V1;
-import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeConnectProtocol.CONNECT_PROTOCOL_V2;
+import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeAPMConnectProtocol.CONNECT_PROTOCOL_V3;
+import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeAPMConnectProtocol.CONNECT_PROTOCOL_V4;
 import static org.apache.kafka.connect.runtime.distributed.WorkerCoordinator.WorkerLoad;
 import static org.hamcrest.CoreMatchers.hasItems;
 import static org.hamcrest.CoreMatchers.is;
@@ -64,7 +64,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-public class IncrementalCooperativeAssignorTest {
+public class IncrementalCooperativeAPMAssignorTest {
     @Rule
     public MockitoRule rule = MockitoJUnit.rule();
 
@@ -76,7 +76,7 @@ public class IncrementalCooperativeAssignorTest {
 
     @Parameters
     public static Iterable<?> mode() {
-        return Arrays.asList(new Object[][]{{CONNECT_PROTOCOL_V1, CONNECT_PROTOCOL_V2}});
+        return Arrays.asList(new Object[][]{{CONNECT_PROTOCOL_V3, CONNECT_PROTOCOL_V4}});
     }
 
     @Parameter
@@ -90,7 +90,7 @@ public class IncrementalCooperativeAssignorTest {
     private String leaderUrl;
     private Time time;
     private int rebalanceDelay;
-    private IncrementalCooperativeAssignor assignor;
+    private IncrementalCooperativeAPMAssignor assignor;
     private int rebalanceNum;
     Map<String, ExtendedAssignment> assignments;
     Map<String, ExtendedAssignment> returnedAssignments;
@@ -114,7 +114,7 @@ public class IncrementalCooperativeAssignorTest {
     }
 
     public void initAssignor() {
-        assignor = Mockito.spy(new IncrementalCooperativeAssignor(
+        assignor = Mockito.spy(new IncrementalCooperativeAPMAssignor(
                 new LogContext(),
                 time,
                 rebalanceDelay));

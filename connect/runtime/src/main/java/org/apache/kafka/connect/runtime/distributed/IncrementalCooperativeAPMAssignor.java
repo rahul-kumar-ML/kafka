@@ -16,8 +16,6 @@
  */
 package org.apache.kafka.connect.runtime.distributed;
 
-import java.util.Map.Entry;
-
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.runtime.distributed.WorkerCoordinator.ConnectorsAndTasks;
@@ -44,19 +42,19 @@ import java.util.stream.IntStream;
 
 import static org.apache.kafka.common.message.JoinGroupResponseData.JoinGroupResponseMember;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.Assignment;
-import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeConnectProtocol.CONNECT_PROTOCOL_V1;
-import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeConnectProtocol.CONNECT_PROTOCOL_V2;
+import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeAPMConnectProtocol.CONNECT_PROTOCOL_V3;
+import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeAPMConnectProtocol.CONNECT_PROTOCOL_V4;
 import static org.apache.kafka.connect.runtime.distributed.WorkerCoordinator.LeaderState;
 
 /**
  * An assignor that computes a distribution of connectors and tasks according to the incremental
- * cooperative strategy for rebalancing. {@see
- * https://cwiki.apache.org/confluence/display/KAFKA/KIP-415%3A+Incremental+Cooperative
- * +Rebalancing+in+Kafka+Connect} for a description of the assignment policy.
- * <p>
+ * cooperative strategy for rebalancing considering the topics that APM/Snappyflow creates. This algorithm is an
+ * improvement to the current one in order to divide task based on data-in-rate.
+ * Here we use a round-robin policy where in we divide the log topics of all profiles among the workers and then the
+ * metric topics, trace topics and finally controll topics
  * Note that this class is NOT thread-safe.
  */
-public class IncrementalCooperativeAssignor implements ConnectAssignor {
+public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
     private final Logger log;
     private final Time time;
     private final int maxDelay;
@@ -69,8 +67,8 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
     protected int previousGenerationId;
     protected Set<String> previousMembers;
 
-    public IncrementalCooperativeAssignor(LogContext logContext, Time time, int maxDelay) {
-        this.log = logContext.logger(IncrementalCooperativeAssignor.class);
+    public IncrementalCooperativeAPMAssignor(LogContext logContext, Time time, int maxDelay) {
+        this.log = logContext.logger(IncrementalCooperativeAPMAssignor.class);
         this.time = time;
         this.maxDelay = maxDelay;
         this.previousAssignment = ConnectorsAndTasks.EMPTY;
@@ -92,7 +90,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         for (JoinGroupResponseMember member : allMemberMetadata) {
             memberConfigs.put(
                     member.memberId(),
-                    IncrementalCooperativeConnectProtocol.deserializeMetadata(ByteBuffer.wrap(member.metadata())));
+                    IncrementalCooperativeAPMConnectProtocol.deserializeMetadata(ByteBuffer.wrap(member.metadata())));
         }
         log.debug("Member configs: {}", memberConfigs);
 
@@ -104,9 +102,9 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                 maxOffset, coordinator.configSnapshot().offset());
 
         short protocolVersion = memberConfigs.values().stream()
-                .allMatch(state -> state.assignment().version() == CONNECT_PROTOCOL_V2)
-                ? CONNECT_PROTOCOL_V2
-                : CONNECT_PROTOCOL_V1;
+                .allMatch(state -> state.assignment().version() == CONNECT_PROTOCOL_V4)
+                ? CONNECT_PROTOCOL_V4
+                : CONNECT_PROTOCOL_V3;
 
         Long leaderOffset = ensureLeaderConfig(maxOffset, coordinator);
         if (leaderOffset == null) {
@@ -202,7 +200,6 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
             previousRevocation.tasks().clear();
         }
 
-
         // Derived set: The set of deleted connectors-and-tasks is a derived set from the set
         // difference of previous - configured
         ConnectorsAndTasks deleted = diff(previousAssignment, configured);
@@ -242,8 +239,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         toRevoke.putAll(computeDuplicatedAssignments(memberConfigs, connectorAssignments, taskAssignments));
         log.debug("Connector and task to revoke assignments (include duplicated assignments): {}", toRevoke);
 
-        List<WorkerLoad> currentWorkerAssignmentWithoutDuplication =
-                removeDuplicated(workerAssignment(memberConfigs, deleted), toRevoke);
+        List<WorkerLoad> currentWorkerAssignmentWithoutDuplication = removeDuplicated(workerAssignment(memberConfigs, deleted), toRevoke);
         log.debug("Complete (excluding deletions and remove duplicated assignments) worker assignments: {}", currentWorkerAssignmentWithoutDuplication);
 
         // Recompute the complete assignment excluding the deleted connectors-and-tasks
@@ -255,11 +251,8 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
 
         handleLostAssignments(lostAssignments, newSubmissions, completeWorkerAssignment, memberConfigs);
 
-        // Do not revoke resources for re-assignment while a delayed rebalance is active
         log.debug("Can leader revoke tasks in this assignment? (delay: {})", delay);
         if (delay == 0) {
-            // Compute the connectors-and-tasks to be revoked for load balancing without taking into
-            // account the deleted ones.
             Map<String, ConnectorsAndTasks> toExplicitlyRevoke =
                     performTaskRevocation(configured, currentWorkerAssignmentWithoutDuplication);
 
@@ -272,7 +265,6 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                         existing.tasks().addAll(assignment.tasks());
                     }
             );
-
             log.debug("Connector and task to revoke assignments: {}", toRevoke);
         }
 
@@ -370,7 +362,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
                 .entrySet().stream()
                 .filter(entry -> entry.getValue() > 1L)
-                .map(Entry::getKey)
+                .map(entry -> entry.getKey())
                 .collect(Collectors.toSet());
 
         Set<ConnectorTaskId> tasks = memberConfigs.values().stream()
@@ -378,7 +370,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
                 .entrySet().stream()
                 .filter(entry -> entry.getValue() > 1L)
-                .map(Entry::getKey)
+                .map(entry -> entry.getKey())
                 .collect(Collectors.toSet());
         return new ConnectorsAndTasks.Builder().with(connectors, tasks).build();
     }
@@ -490,8 +482,9 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                 log.debug("Delayed rebalance in progress. Task reassignment is postponed. New computed rebalance delay: {}", delay);
             } else {
                 // This means scheduledRebalance == 0
-                // We could also extract the current minimum delay from the group, to make
-                // independent of consecutive leader failures, but this optimization is skipped at the moment
+                // We could also also extract the current minimum delay from the group, to make
+                // independent of consecutive leader failures, but this optimization is skipped
+                // at the moment
                 delay = maxDelay;
                 log.debug("Resetting rebalance delay to the max: {}.", delay);
             }
@@ -642,7 +635,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                 .stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
-                        e -> IncrementalCooperativeConnectProtocol.serializeAssignment(e.getValue())));
+                        e -> IncrementalCooperativeAPMConnectProtocol.serializeAssignment(e.getValue())));
     }
 
     private static ConnectorsAndTasks diff(ConnectorsAndTasks base,
