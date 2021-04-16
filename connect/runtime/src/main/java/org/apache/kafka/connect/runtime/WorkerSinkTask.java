@@ -284,17 +284,56 @@ class WorkerSinkTask extends WorkerTask {
         return commitFailures;
     }
 
+    private String getProfileKey() {
+
+        if (SinkConnectorConfig.hasTopicsConfig(taskConfig)) {
+            List<String> topics = SinkConnectorConfig.parseTopicsList(taskConfig);
+            return topics.get(0).split("-")[1];
+        } else {
+            return taskConfig.get(SinkTask.TOPICS_REGEX_CONFIG).split("-")[1];
+        }
+    }
+
     /**
      * Initializes and starts the SinkTask.
      */
     protected void initializeAndStart() {
+
         SinkConnectorConfig.validate(taskConfig);
 
-        if (SinkConnectorConfig.hasTopicsConfig(taskConfig)) {
+        if (id.connector().startsWith("es-") || id.connector().startsWith("s3-")) {
+
+            // maximum number of tasks that are being initialised
+            int maxTasks = Integer.parseInt(taskConfig.get(SinkConnectorConfig.TASKS_MAX_CONFIG));
+
+            // Number of tasks in group after dividing into groups (4 groups for ES and 2 for S3 connector)
+            int groupLength = id.connector().startsWith("es-") ? maxTasks / 4 : maxTasks / 2;
+
+            String topicType = "";
+
+            if ((id.task() + 1) <= groupLength) {
+                topicType = "log";     // Group number 1 -> dedicated to log topic
+            } else if ((id.task() + 1) <= (groupLength * 2)) {
+                topicType = "metric";  // Group number 2 -> dedicated to metric topic
+            } else if ((id.task() + 1) <= (groupLength * 3)) {
+                topicType = "control"; // Group number 3 -> dedicated to control topic
+            } else {
+                topicType = "trace";   // Group number 4 -> dedicated to trace topic
+            }
+
+            List<String> topics = new ArrayList<>();
+            topics.add(topicType + "-" + getProfileKey());
+            consumer.subscribe(topics, new HandleRebalance());
+            log.debug("{} Initializing and starting task for topic {}", this, topics.get(0));
+
+        } else if (SinkConnectorConfig.hasTopicsConfig(taskConfig)) {
+
             List<String> topics = SinkConnectorConfig.parseTopicsList(taskConfig);
             consumer.subscribe(topics, new HandleRebalance());
             log.debug("{} Initializing and starting task for topics {}", this, Utils.join(topics, ", "));
+
         } else {
+
             String topicsRegexStr = taskConfig.get(SinkTask.TOPICS_REGEX_CONFIG);
             Pattern pattern = Pattern.compile(topicsRegexStr);
             consumer.subscribe(pattern, new HandleRebalance());

@@ -42,8 +42,10 @@ import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.LEADE
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.URL_KEY_NAME;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.VERSION_KEY_NAME;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompatibility.COMPATIBLE;
+import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompatibility.APM_COMPATIBLE;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompatibility.EAGER;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompatibility.SESSIONED;
+import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompatibility.APM_SESSIONED;
 
 
 /**
@@ -62,7 +64,7 @@ public class IncrementalCooperativeAPMConnectProtocol {
     public static final boolean TOLERATE_MISSING_FIELDS_WITH_DEFAULTS = true;
 
     /**
-     * Connect Protocol Header V1:
+     * Connect Protocol Header V3:
      * <pre>
      *   Version            => Int16
      * </pre>
@@ -71,11 +73,11 @@ public class IncrementalCooperativeAPMConnectProtocol {
             .set(VERSION_KEY_NAME, CONNECT_PROTOCOL_V3);
 
     /**
-     * Connect Protocol Header V2:
+     * Connect Protocol Header V4:
      * <pre>
      *   Version            => Int16
      * </pre>
-     * The V2 protocol is schematically identical to V1, but is used to signify that internal request
+     * The V4 protocol is schematically identical to V3, but is used to signify that internal request
      * verification and distribution of session keys is enabled (for more information, see KIP-507:
      * https://cwiki.apache.org/confluence/display/KAFKA/KIP-507%3A+Securing+Internal+Connect+REST+Endpoints)
      */
@@ -83,7 +85,7 @@ public class IncrementalCooperativeAPMConnectProtocol {
             .set(VERSION_KEY_NAME, CONNECT_PROTOCOL_V4);
 
     /**
-     * Config State V1:
+     * Config State V3:
      * <pre>
      *   Url                => [String]
      *   ConfigOffset       => Int64
@@ -92,7 +94,7 @@ public class IncrementalCooperativeAPMConnectProtocol {
     public static final Schema CONFIG_STATE_V3 = CONFIG_STATE_V0;
 
     /**
-     * Allocation V1
+     * Allocation V3
      * <pre>
      *   Current Assignment => [Byte]
      * </pre>
@@ -103,7 +105,7 @@ public class IncrementalCooperativeAPMConnectProtocol {
 
     /**
      *
-     * Connector Assignment V1:
+     * Connector Assignment V3:
      * <pre>
      *   Connector          => [String]
      *   Tasks              => [Int32]
@@ -117,7 +119,7 @@ public class IncrementalCooperativeAPMConnectProtocol {
     public static final Schema CONNECTOR_ASSIGNMENT_V3 = CONNECTOR_ASSIGNMENT_V0;
 
     /**
-     * Raw (non versioned) assignment V1:
+     * Raw (non versioned) assignment V3:
      * <pre>
      *   Error              => Int16
      *   Leader             => [String]
@@ -140,7 +142,7 @@ public class IncrementalCooperativeAPMConnectProtocol {
 
     /**
      * The fields are serialized in sequence as follows:
-     * Subscription V1:
+     * Subscription V3:
      * <pre>
      *   Version            => Int16
      *   Url                => [String]
@@ -180,10 +182,18 @@ public class IncrementalCooperativeAPMConnectProtocol {
         List<JoinGroupRequestProtocol> joinGroupRequestProtocols = new ArrayList<>();
         if (sessioned) {
             joinGroupRequestProtocols.add(new JoinGroupRequestProtocol()
+                    .setName(APM_SESSIONED.protocol())
+                    .setMetadata(IncrementalCooperativeAPMConnectProtocol.serializeMetadata(workerState, true).array())
+            );
+            joinGroupRequestProtocols.add(new JoinGroupRequestProtocol()
                     .setName(SESSIONED.protocol())
                     .setMetadata(IncrementalCooperativeConnectProtocol.serializeMetadata(workerState, true).array())
             );
         }
+        joinGroupRequestProtocols.add(new JoinGroupRequestProtocol()
+                .setName(APM_COMPATIBLE.protocol())
+                .setMetadata(IncrementalCooperativeAPMConnectProtocol.serializeMetadata(workerState, false).array())
+        );
         joinGroupRequestProtocols.add(new JoinGroupRequestProtocol()
                 .setName(COMPATIBLE.protocol())
                 .setMetadata(IncrementalCooperativeConnectProtocol.serializeMetadata(workerState, false).array())
@@ -218,7 +228,7 @@ public class IncrementalCooperativeAPMConnectProtocol {
 
     /**
      * The fields are serialized in sequence as follows:
-     * Complete Assignment V1:
+     * Complete Assignment V3:
      * <pre>
      *   Version            => Int16
      *   Error              => Int16
@@ -270,5 +280,4 @@ public class IncrementalCooperativeAPMConnectProtocol {
 
         // otherwise, assume versions can be parsed
     }
-
 }
