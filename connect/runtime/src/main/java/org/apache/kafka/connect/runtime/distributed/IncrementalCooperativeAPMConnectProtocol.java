@@ -16,12 +16,9 @@
  */
 package org.apache.kafka.connect.runtime.distributed;
 
-import org.apache.kafka.common.protocol.types.ArrayOf;
-import org.apache.kafka.common.protocol.types.Field;
 import org.apache.kafka.common.protocol.types.Schema;
 import org.apache.kafka.common.protocol.types.SchemaException;
 import org.apache.kafka.common.protocol.types.Struct;
-import org.apache.kafka.common.protocol.types.Type;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -29,18 +26,15 @@ import java.util.List;
 
 import static org.apache.kafka.common.message.JoinGroupRequestData.JoinGroupRequestProtocol;
 import static org.apache.kafka.common.message.JoinGroupRequestData.JoinGroupRequestProtocolCollection;
-import static org.apache.kafka.common.protocol.types.Type.NULLABLE_BYTES;
-import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.ASSIGNMENT_KEY_NAME;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.CONFIG_OFFSET_KEY_NAME;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.CONFIG_STATE_V0;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.CONNECTOR_ASSIGNMENT_V0;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.CONNECT_PROTOCOL_HEADER_SCHEMA;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.CONNECT_PROTOCOL_V0;
-import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.ERROR_KEY_NAME;
-import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.LEADER_KEY_NAME;
-import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.LEADER_URL_KEY_NAME;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.URL_KEY_NAME;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.VERSION_KEY_NAME;
+import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeConnectProtocol.ALLOCATION_V1;
+import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeConnectProtocol.ASSIGNMENT_V1;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompatibility.COMPATIBLE;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompatibility.APM_COMPATIBLE;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompatibility.EAGER;
@@ -57,11 +51,8 @@ import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompat
  */
 public class IncrementalCooperativeAPMConnectProtocol {
     public static final String ALLOCATION_KEY_NAME = "allocation";
-    public static final String REVOKED_KEY_NAME = "revoked";
-    public static final String SCHEDULED_DELAY_KEY_NAME = "delay";
     public static final short CONNECT_PROTOCOL_V3 = 3;
     public static final short CONNECT_PROTOCOL_V4 = 4;
-    public static final boolean TOLERATE_MISSING_FIELDS_WITH_DEFAULTS = true;
 
     /**
      * Connect Protocol Header V3:
@@ -99,9 +90,7 @@ public class IncrementalCooperativeAPMConnectProtocol {
      *   Current Assignment => [Byte]
      * </pre>
      */
-    public static final Schema ALLOCATION_V3 = new Schema(
-            TOLERATE_MISSING_FIELDS_WITH_DEFAULTS,
-            new Field(ALLOCATION_KEY_NAME, NULLABLE_BYTES, null, true, null));
+    public static final Schema ALLOCATION_V3 = ALLOCATION_V1;
 
     /**
      *
@@ -130,15 +119,7 @@ public class IncrementalCooperativeAPMConnectProtocol {
      *   ScheduledDelay     => Int32
      * </pre>
      */
-    public static final Schema ASSIGNMENT_V3 = new Schema(
-            TOLERATE_MISSING_FIELDS_WITH_DEFAULTS,
-            new Field(ERROR_KEY_NAME, Type.INT16),
-            new Field(LEADER_KEY_NAME, Type.STRING),
-            new Field(LEADER_URL_KEY_NAME, Type.STRING),
-            new Field(CONFIG_OFFSET_KEY_NAME, Type.INT64),
-            new Field(ASSIGNMENT_KEY_NAME, ArrayOf.nullable(CONNECTOR_ASSIGNMENT_V3), null, true, null),
-            new Field(REVOKED_KEY_NAME, ArrayOf.nullable(CONNECTOR_ASSIGNMENT_V3), null, true, null),
-            new Field(SCHEDULED_DELAY_KEY_NAME, Type.INT32, null, 0));
+    public static final Schema ASSIGNMENT_V3 = ASSIGNMENT_V1;
 
     /**
      * The fields are serialized in sequence as follows:
