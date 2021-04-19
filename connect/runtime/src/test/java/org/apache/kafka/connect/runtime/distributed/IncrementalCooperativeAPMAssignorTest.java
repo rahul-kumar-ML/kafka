@@ -1807,6 +1807,202 @@ public class IncrementalCooperativeAPMAssignorTest {
         verify(coordinator, times(rebalanceNum)).lastCompletedGenerationId();
     }
 
+    @Test
+    public void testTaskAssignmentWhenTasksDuplicatedInWorkerAssignment() {
+        // todo: check and later comments here to adhere to our new assignor
+        when(coordinator.configSnapshot()).thenReturn(configState);
+        doReturn(Collections.EMPTY_MAP).when(assignor).serializeAssignments(assignmentsCapture.capture());
+
+        // First assignment with 1 worker and 2 connectors configured but not yet assigned
+        //
+        // note: the assigned/revoked Connectors/tasks might be different, but the amount should be the same
+        // assignment after this phase:
+        // W1: assignedConnectors:[C0, C1], assignedTasks:[T0-0, T0-1, T0-2, T0-3, T1-0, T1-1, T1-2, T1-3],
+        //     revokedConnectors:[] revokedTasks:[]
+        //
+        // Final distribution after this phase:
+        // W1: connectors:[C0, C1], tasks:[T0-0, T0-1, T0-2, T0-3, T1-0, T1-1, T1-2, T1-3]
+        assignor.performTaskAssignment(leader, offset, memberConfigs, coordinator, protocolVersion);
+        ++rebalanceNum;
+        returnedAssignments = assignmentsCapture.getValue();
+        assertDelay(0, returnedAssignments);
+        expectedMemberConfigs = memberConfigs(leader, offset, returnedAssignments);
+        assertNoReassignments(memberConfigs, expectedMemberConfigs);
+        assertAssignment(2, 24, 0, 0, "worker1");
+
+        // Second assignment with a second worker with duplicate assignment joining and all connectors running on previous worker
+        //
+        // W1 joined with assignment: connectors:[C0, C1], tasks:[T0-0, T0-1, T0-2, T0-3, T1-0, T1-1, T1-2, T1-3]
+        // W2 joined with assignment: connectors:[C1], tasks:[T1-0, T1-1, T1-2, T1-3]
+        //
+        // assignment after this phase:
+        // W1: assignedConnectors:[], assignedTasks:[],
+        //     revokedConnectors:[C1] revokedTasks:[T1-0, T1-1, T1-2, T1-3]
+        // W2: assignedConnectors:[], assignedTasks:[],
+        //     revokedConnectors:[C1] revokedTasks:[T1-0, T1-1, T1-2, T1-3]
+        //
+        // Final distribution after this phase:
+        // W1: connectors:[C0], tasks:[T0-0, T0-1, T0-2, T0-3]
+        // W2: connectors:[], tasks:[]
+        applyAssignments(returnedAssignments);
+        memberConfigs = memberConfigs(leader, offset, assignments);
+        ExtendedAssignment duplicatedWorkerAssignment = newExpandableAssignment();
+        duplicatedWorkerAssignment.connectors().addAll(newConnectors(1, 2));
+        duplicatedWorkerAssignment.tasks().addAll(newTasks("es-connector1", 0, 12));
+        memberConfigs.put("worker2", new ExtendedWorkerState(leaderUrl, offset, duplicatedWorkerAssignment));
+        assignor.performTaskAssignment(leader, offset, memberConfigs, coordinator, protocolVersion);
+        ++rebalanceNum;
+        returnedAssignments = assignmentsCapture.getValue();
+        assertDelay(0, returnedAssignments);
+        expectedMemberConfigs = memberConfigs(leader, offset, returnedAssignments);
+        assertNoReassignments(memberConfigs, expectedMemberConfigs);
+        assertAssignment(0, 0, 2, 20, "worker1", "worker2");
+
+        // Third assignment after revocations
+        //
+        // assignment after this phase:
+        // W1: assignedConnectors:[], assignedTasks:[],
+        //     revokedConnectors:[] revokedTasks:[]
+        // W2: assignedConnectors:[C1], assignedTasks:[T1-0, T1-1, T1-2, T1-3],
+        //     revokedConnectors:[] revokedTasks:[]
+        //
+        // Final distribution after this phase:
+        // W1: connectors:[C0], tasks:[T0-0, T0-1, T0-2, T0-3]
+        // W2: connectors:[C1], tasks:[T1-0, T1-1, T1-2, T1-3]
+        applyAssignments(returnedAssignments);
+        memberConfigs = memberConfigs(leader, offset, assignments);
+        assignor.performTaskAssignment(leader, offset, memberConfigs, coordinator, protocolVersion);
+        ++rebalanceNum;
+        returnedAssignments = assignmentsCapture.getValue();
+        assertDelay(0, returnedAssignments);
+        expectedMemberConfigs = memberConfigs(leader, offset, returnedAssignments);
+        assertNoReassignments(memberConfigs, expectedMemberConfigs);
+        assertAssignment(1, 12, 0, 0, "worker1", "worker2");
+
+        // Fourth rebalance should not change assignments
+        applyAssignments(returnedAssignments);
+        memberConfigs = memberConfigs(leader, offset, assignments);
+        assignor.performTaskAssignment(leader, offset, memberConfigs, coordinator, protocolVersion);
+        ++rebalanceNum;
+        returnedAssignments = assignmentsCapture.getValue();
+        assertDelay(0, returnedAssignments);
+        expectedMemberConfigs = memberConfigs(leader, offset, returnedAssignments);
+        assertNoReassignments(memberConfigs, expectedMemberConfigs);
+        assertAssignment(0, 0, 0, 0, "worker1", "worker2");
+
+        verify(coordinator, times(rebalanceNum)).configSnapshot();
+        verify(coordinator, times(rebalanceNum)).leaderState(any());
+        verify(coordinator, times(2 * rebalanceNum)).generationId();
+        verify(coordinator, times(rebalanceNum)).memberId();
+        verify(coordinator, times(rebalanceNum)).lastCompletedGenerationId();
+    }
+
+    @Test
+    public void testDuplicatedAssignmentHandleWhenTheDuplicatedAssignmentsDeleted() {
+        when(coordinator.configSnapshot()).thenReturn(configState);
+        doReturn(Collections.EMPTY_MAP).when(assignor).serializeAssignments(assignmentsCapture.capture());
+
+        // First assignment with 1 worker and 2 connectors configured but not yet assigned
+        //
+        // note: the assigned/revoked Connectors/tasks might be different, but the amount should be the same
+        // assignment after this phase:
+        // W1: assignedConnectors:[C0, C1], assignedTasks:[T0-0, T0-1, T0-2, T0-3, T1-0, T1-1, T1-2, T1-3],
+        //     revokedConnectors:[] revokedTasks:[]
+        //
+        // Final distribution after this phase:
+        // W1: connectors:[C0, C1], tasks:[T0-0, T0-1, T0-2, T0-3, T1-0, T1-1, T1-2, T1-3]
+        assignor.performTaskAssignment(leader, offset, memberConfigs, coordinator, protocolVersion);
+        ++rebalanceNum;
+        returnedAssignments = assignmentsCapture.getValue();
+        assertDelay(0, returnedAssignments);
+        expectedMemberConfigs = memberConfigs(leader, offset, returnedAssignments);
+        assertNoReassignments(memberConfigs, expectedMemberConfigs);
+        assertAssignment(2, 24, 0, 0, "worker1");
+
+        //delete connector1
+        configState = clusterConfigState(offset, 2, 1, 12);
+        when(coordinator.configSnapshot()).thenReturn(configState);
+
+        // Second assignment with a second worker with duplicate assignment joining and the duplicated assignment is deleted at the same time
+        //
+        // W1 joined with assignment: connectors:[C0, C1], tasks:[T0-0, T0-1, T0-2, T0-3, T1-0, T1-1, T1-2, T1-3]
+        // W2 joined with assignment: connectors:[C1], tasks:[T1-0, T1-1, T1-2, T1-3]
+        // Connector "C1" is deleted
+        //
+        // assignment after this phase:
+        // W1: assignedConnectors:[], assignedTasks:[],
+        //     revokedConnectors:[C1] revokedTasks:[T1-0, T1-1, T1-2, T1-3, T0-2, T0-3]
+        // W2: assignedConnectors:[], assignedTasks:[],
+        //     revokedConnectors:[C1] revokedTasks:[T1-0, T1-1, T1-2, T1-3]
+        //
+        // Final distribution after this phase:
+        // W1: connectors:[C0], tasks:[T0-0, T0-1]
+        // W2: connectors:[], tasks:[]
+        applyAssignments(returnedAssignments);
+        memberConfigs = memberConfigs(leader, offset, assignments);
+        ExtendedAssignment duplicatedWorkerAssignment = newExpandableAssignment();
+        duplicatedWorkerAssignment.connectors().addAll(newConnectors(1, 2));
+        duplicatedWorkerAssignment.tasks().addAll(newTasks("es-connector1", 0, 12));
+        memberConfigs.put("worker2", new ExtendedWorkerState(leaderUrl, offset, duplicatedWorkerAssignment));
+        assignor.performTaskAssignment(leader, offset, memberConfigs, coordinator, protocolVersion);
+        ++rebalanceNum;
+        returnedAssignments = assignmentsCapture.getValue();
+        assertDelay(0, returnedAssignments);
+        expectedMemberConfigs = memberConfigs(leader, offset, returnedAssignments);
+        assertNoReassignments(memberConfigs, expectedMemberConfigs);
+        assertAssignment(0, 0, 2, 30, "worker1", "worker2");
+
+        // Third rebalance after revocations
+        //
+        // assignment after this phase:
+        // W1: assignedConnectors:[], assignedTasks:[],
+        //     revokedConnectors:[] revokedTasks:[]
+        // W2: assignedConnectors:[], assignedTasks:[T0-2, T0-3],
+        //     revokedConnectors:[] revokedTasks:[]
+        //
+        // Final distribution after this phase:
+        // W1: connectors:[C0], tasks:[T0-0, T0-1]
+        // W2: connectors:[], tasks:[T0-2, T0-3]
+        applyAssignments(returnedAssignments);
+        memberConfigs = memberConfigs(leader, offset, assignments);
+        assignor.performTaskAssignment(leader, offset, memberConfigs, coordinator, protocolVersion);
+        ++rebalanceNum;
+        returnedAssignments = assignmentsCapture.getValue();
+        assertDelay(0, returnedAssignments);
+        expectedMemberConfigs = memberConfigs(leader, offset, returnedAssignments);
+        assertNoReassignments(memberConfigs, expectedMemberConfigs);
+        assertAssignment(0, 6, 0, 0, "worker1", "worker2");
+
+        // Fourth rebalance should not change assignments
+        applyAssignments(returnedAssignments);
+        memberConfigs = memberConfigs(leader, offset, assignments);
+        assignor.performTaskAssignment(leader, offset, memberConfigs, coordinator, protocolVersion);
+        ++rebalanceNum;
+        returnedAssignments = assignmentsCapture.getValue();
+        assertDelay(0, returnedAssignments);
+        expectedMemberConfigs = memberConfigs(leader, offset, returnedAssignments);
+        assertNoReassignments(memberConfigs, expectedMemberConfigs);
+        assertAssignment(0, 0, 0, 0, "worker1", "worker2");
+
+        verify(coordinator, times(rebalanceNum)).configSnapshot();
+        verify(coordinator, times(rebalanceNum)).leaderState(any());
+        verify(coordinator, times(2 * rebalanceNum)).generationId();
+        verify(coordinator, times(rebalanceNum)).memberId();
+        verify(coordinator, times(rebalanceNum)).lastCompletedGenerationId();
+    }
+
+    private static List<String> newConnectors(int start, int end) {
+        return IntStream.range(start, end)
+                .mapToObj(i -> "es-connector" + i)
+                .collect(Collectors.toList());
+    }
+
+    private static List<ConnectorTaskId> newTasks(String connectorName, int start, int end) {
+        return IntStream.range(start, end)
+                .mapToObj(i -> new ConnectorTaskId(connectorName, i))
+                .collect(Collectors.toList());
+    }
+
     private static ClusterConfigState clusterConfigState(long offset,
                                                          int connectorNum,
                                                          int taskNum) {

@@ -277,22 +277,22 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
 
         Collections.sort(workers);
 
-        Map<String, List<ConnectorTaskId>> newTaskAllocation = getNewTaskAllocation(configuredConnectors, configuredTasks, currentAllocation, workers);
-        Map<String, List<String>> newConnectorAllocation = getNewConnectorAllocation(configuredConnectors, workers);
+        Map<String, Set<ConnectorTaskId>> newTaskAllocation = getNewTaskAllocation(configuredConnectors, configuredTasks, currentAllocation, workers);
+        Map<String, Set<String>> newConnectorAllocation = getNewConnectorAllocation(configuredConnectors, workers);
 
         workers.removeAll(missingWorkers);
 
         return workers.stream().collect(Collectors.toMap(k -> k, k -> new ConnectorsAndTasks.Builder().with(newConnectorAllocation.get(k), newTaskAllocation.get(k)).build()));
     }
 
-    private Map<String, List<String>> getNewConnectorAllocation(Set<String> configuredConnectors, List<String> workers) {
+    private Map<String, Set<String>> getNewConnectorAllocation(Set<String> configuredConnectors, List<String> workers) {
 
-        Map<String, List<String>> newAllocation = new HashMap<>();
+        Map<String, Set<String>> newAllocation = new HashMap<>();
 
         int count = 0;
 
         for (String worker : workers) {
-            newAllocation.computeIfAbsent(worker, k -> new ArrayList<>());
+            newAllocation.computeIfAbsent(worker, k -> new HashSet<>());
         }
 
         for (String connector : configuredConnectors) {
@@ -306,13 +306,13 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
         return newAllocation;
     }
 
-    private Map<String, List<ConnectorTaskId>> getNewTaskAllocation(Set<String> configuredConnectors, Set<ConnectorTaskId> configuredTasks, Map<String, ConnectorsAndTasks> currentAllocation, List<String> workers) {
+    private Map<String, Set<ConnectorTaskId>> getNewTaskAllocation(Set<String> configuredConnectors, Set<ConnectorTaskId> configuredTasks, Map<String, ConnectorsAndTasks> currentAllocation, List<String> workers) {
 
-        Map<String, List<ConnectorTaskId>> newAllocation = new HashMap<>();
+        Map<String, Set<ConnectorTaskId>> newAllocation = new HashMap<>();
         Map<String, List<TaskCroup>> intermediateAllocation = new HashMap<>();
 
         for (String worker : workers) {
-            newAllocation.computeIfAbsent(worker, k -> new ArrayList<>());
+            newAllocation.computeIfAbsent(worker, k -> new HashSet<>());
             intermediateAllocation.computeIfAbsent(worker, k -> new ArrayList<>());
         }
 
