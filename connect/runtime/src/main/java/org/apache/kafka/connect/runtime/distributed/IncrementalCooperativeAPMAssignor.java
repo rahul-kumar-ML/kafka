@@ -170,25 +170,26 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
 
         // The set of configured connectors-and-tasks
         ConnectorsAndTasks configured = new ConnectorsAndTasks.Builder().with(configuredConnectors, configuredTasks).build();
-        log.debug("Configured assignments: {}", configured);
+        log.debug("Configured connectors and tasks: {}", configured);
 
         // Current allocation of connectors-and-tasks to workers (workers that existed up till previous rebalance)
         Map<String, ConnectorsAndTasks> currentAllocation = getCurrentAllocation(memberConfigs);
         Map<String, Collection<String>> currentConnectors = currentAllocation.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, k -> k.getValue().connectors()));
         Map<String, Collection<ConnectorTaskId>> currentTasks = currentAllocation.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, k -> k.getValue().tasks()));
-        log.debug("Current allocations: {}", currentAllocation);
+        log.debug("Current allocation is: {}", currentAllocation);
 
         // New allocation of connectors-and-tasks to workers. This also assumes the worker is dead or alive based on
         // set delay etc.
         Map<String, ConnectorsAndTasks> newAllocation = getNewAllocation(configuredConnectors, configuredTasks, currentAllocation);
         Map<String, Collection<String>> newConnectors = newAllocation.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, k -> k.getValue().connectors()));
         Map<String, Collection<ConnectorTaskId>> newTasks = newAllocation.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, k -> k.getValue().tasks()));
-        log.debug("Our new allocation is {}", newAllocation);
+        log.debug("New allocation is: {}", newAllocation);
 
         // connectors-and-tasks to revoke from workers
         Map<String, ConnectorsAndTasks> toRevoke = currentAllocation.keySet().stream().collect(Collectors.toMap(k -> k, k -> diff(currentAllocation.get(k), newAllocation.get(k))));
-        log.debug("toRevoke is {}", toRevoke);
+        log.debug("connectors and tasks to revoke are: {}", toRevoke);
 
+        // connectors that need to be assigned after this rebalance round
         Map<String, Collection<String>> incrementalConnectorAllocations = diff(newConnectors, currentConnectors);
         for (Map.Entry<String, Collection<String>> entry : incrementalConnectorAllocations.entrySet()) {
             for (ConnectorsAndTasks values : toRevoke.values()) {
@@ -196,6 +197,7 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
             }
         }
 
+        // task that need to be assigned after this rebalance round
         Map<String, Collection<ConnectorTaskId>> incrementalTaskAllocations = diff(newTasks, currentTasks);
         for (Map.Entry<String, Collection<ConnectorTaskId>> entry : incrementalTaskAllocations.entrySet()) {
             for (ConnectorsAndTasks values : toRevoke.values()) {
@@ -203,31 +205,35 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
             }
         }
 
-        log.debug("Incremental connector assignments: {}", incrementalConnectorAllocations);
-        log.debug("Incremental task assignments: {}", incrementalTaskAllocations);
+        log.debug("Incremental connector allocation: {}", incrementalConnectorAllocations);
+        log.debug("Incremental task allocation: {}", incrementalTaskAllocations);
 
+        // initializing leader state after removing deleted tasks and connectors
         initLeaderState(coordinator, memberConfigs, configured);
 
+        // Using incremental assignments and revocations, fill assignments in a way that follows existing schema
         Map<String, ExtendedAssignment> assignments = fillAssignments(memberConfigs.keySet(), Assignment.NO_ERROR, leaderId, memberConfigs.get(leaderId).url(), maxOffset, incrementalConnectorAllocations, incrementalTaskAllocations, toRevoke, delay, protocolVersion);
-
         previousGenerationId = coordinator.generationId();
-
-        log.debug("Actual assignments: {}", assignments);
+        log.debug("Actual assignments that will be sent to to group coordinator: {}", assignments);
         return serializeAssignments(assignments);
     }
 
     private void initLeaderState(WorkerCoordinator coordinator, Map<String, ExtendedWorkerState> memberConfigs, ConnectorsAndTasks configured) {
 
+        // Removed all deleted connectors
         Map<String, Collection<String>> connectorAllocation = memberConfigs.keySet().stream().collect(Collectors.toMap(k -> k, k -> memberConfigs.get(k).assignment().connectors()));
         for (Map.Entry<String, Collection<String>> entry : connectorAllocation.entrySet()) {
             entry.getValue().retainAll(configured.connectors());
         }
 
+        // Removed all deleted tasks
         Map<String, Collection<ConnectorTaskId>> taskAllocation = memberConfigs.keySet().stream().collect(Collectors.toMap(k -> k, k -> memberConfigs.get(k).assignment().tasks()));
         for (Map.Entry<String, Collection<ConnectorTaskId>> entry : taskAllocation.entrySet()) {
             entry.getValue().retainAll(configured.tasks());
         }
 
+        log.debug("Initializing leader state with Member configs: {}, Connector allocation: {}, Task allocation: {}",
+                memberConfigs, connectorAllocation, taskAllocation);
         coordinator.leaderState(new LeaderState(memberConfigs, connectorAllocation, taskAllocation));
     }
 
@@ -242,27 +248,34 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
 
         if (!missingWorkers.isEmpty()) {
 
+            log.debug("Found few missing workers: {}", missingWorkers);
             final long now = time.milliseconds();
 
             if (scheduledRebalance > 0 && now >= scheduledRebalance) {
 
-                // delayed rebalance expired and it's time to assign resources without assuming that any previous
-                // worker might come back
+                // delayed rebalance expired and it's time to assign resources using existing workers
                 resetDelay();
                 previousMembers = new HashSet<>(workers);
+                log.debug("Set Previous Members to {}", previousMembers);
+
                 missingWorkers = new ArrayList<>();
+                log.debug("Rebalance delay has expired. Assuming missing workers as dead");
 
             } else {
 
                 if (now < scheduledRebalance) {
+
                     // a delayed rebalance is in progress, but it's not yet time to forget the missing workers
                     delay = calculateDelay(now);
-                    log.debug("Delayed rebalance in progress. Task reassignment is postponed. New computed rebalance delay: {}", delay);
+                    log.debug("Rebalance delay has begun but not yet expired. Assuming missing workers can come back. "
+                            + "Updated delay value: {}", delay);
+
                 } else {
-                    // This means scheduledRebalance == 0
-                    // Set the scheduledRebalance using maxDelay
+
+                    // This means scheduledRebalance == 0. Hence set the scheduledRebalance using maxDelay
                     delay = maxDelay;
-                    log.debug("Resetting rebalance delay to the max: {}.", delay);
+                    log.debug("Rebalance delay has not yet begun. Assuming missing workers can come back. "
+                            + "Setting rebalance delay to the max: {}.", delay);
                 }
 
                 scheduledRebalance = now + delay;
@@ -272,10 +285,12 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
         } else {
 
             previousMembers = new HashSet<>(workers);
+            log.debug("Set Previous Members to {}", previousMembers);
             resetDelay();
         }
 
         Collections.sort(workers);
+        log.debug("Sorted list of workers (includes missing workers): {}", workers);
 
         Map<String, Set<ConnectorTaskId>> newTaskAllocation = getNewTaskAllocation(configuredConnectors, configuredTasks, currentAllocation, workers);
         Map<String, Set<String>> newConnectorAllocation = getNewConnectorAllocation(configuredConnectors, workers);
@@ -289,14 +304,13 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
 
         Map<String, Set<String>> newAllocation = new HashMap<>();
 
-        int count = 0;
-
         for (String worker : workers) {
             newAllocation.computeIfAbsent(worker, k -> new HashSet<>());
         }
 
+        // Perform round-robin assignment of connectors
+        int count = 0;
         for (String connector : configuredConnectors) {
-
             int index = count % workers.size();
             String worker = workers.get(index);
             newAllocation.get(worker).add(connector);
@@ -308,7 +322,10 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
 
     private Map<String, Set<ConnectorTaskId>> getNewTaskAllocation(Set<String> configuredConnectors, Set<ConnectorTaskId> configuredTasks, Map<String, ConnectorsAndTasks> currentAllocation, List<String> workers) {
 
+        // Denotes the distribution of tasks
         Map<String, Set<ConnectorTaskId>> newAllocation = new HashMap<>();
+
+        // Denotes the distribution of task groups
         Map<String, List<TaskCroup>> intermediateAllocation = new HashMap<>();
 
         for (String worker : workers) {
@@ -325,6 +342,8 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
             for (String connector : configuredConnectors.stream().sorted().collect(Collectors.toList())) {
                 TaskCroup group = getTaskCroup(connector, configuredTasks, t);
                 if (group != null) {
+                    // Assign same task group object as many times as there are tasks in it.
+                    // Later phases will using group.pop which will reduce the tasks in the object
                     for (int i = 0; i < group.size(); i++) {
                         allGroups.add(group);
                     }
@@ -332,16 +351,19 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
             }
         }
 
+        // Perform round-robin assignment of task groups
         int count = 0;
-
         for (TaskCroup group : allGroups) {
-
             int index = count % workers.size();
             String worker = workers.get(index);
             intermediateAllocation.get(worker).add(group);
             count++;
         }
 
+        // First compare task group allocation with current task allocation to determine if something can be retained
+        // i.e. If worker1 is currently running C1T0, is supposed to run C1T1 in new assignment and
+        // C1T0, C1T1 belong to same task group (consuming from same topic) then we can retain C1T0 itself
+        // Our main goal is to have least revocations
         for (String currentWorker : currentAllocation.keySet().stream().sorted().collect(Collectors.toList())) {
 
             for (ConnectorTaskId taskId : currentAllocation.get(currentWorker).tasks()) {
@@ -351,7 +373,7 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
                     TaskCroup group = intermediateAllocation.get(currentWorker).get(index);
 
                     if (group.contains(taskId)) {
-                        group.pop(taskId);
+                        group.remove(taskId);
                         intermediateAllocation.get(currentWorker).remove(index);
                         newAllocation.get(currentWorker).add(taskId);
                         break;
@@ -360,9 +382,10 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
             }
         }
 
+        // Once the comparison with current allocation is done, assign pending tasks
         for (String worker : intermediateAllocation.keySet().stream().sorted().collect(Collectors.toList())) {
             for (TaskCroup group : intermediateAllocation.get(worker)) {
-                ConnectorTaskId taskId = group.popNext();
+                ConnectorTaskId taskId = group.pop();
                 if (taskId != null) {
                     newAllocation.get(worker).add(taskId);
                 }
@@ -394,13 +417,13 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
             return task.connector().equals(connector) && taskIds.contains(task.task());
         }
 
-        public void pop(ConnectorTaskId task) {
+        public void remove(ConnectorTaskId task) {
             if (task.connector().equals(connector)) {
                 taskIds.remove(Integer.valueOf(task.task()));
             }
         }
 
-        public ConnectorTaskId popNext() {
+        public ConnectorTaskId pop() {
             if (this.taskIds.size() > 0) {
                 ConnectorTaskId toReturn = new ConnectorTaskId(connector, this.taskIds.get(0));
                 this.taskIds.remove(0);
@@ -420,35 +443,41 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
         List<Integer> connectorTasks = configuredTasks.stream().filter(v -> connector.equals(v.connector())).map(ConnectorTaskId::task).sorted().collect(Collectors.toList());
         int length = connectorTasks.size();
 
-        if (connector.startsWith("s3")) {
+        // FixMe: rather than using 2/4 etc. check the task config to find out #topics its supposed to consume from
+        if (connector.startsWith("s3") && length % 2 == 0) {
+
+            // Above condition checks for S3 connector to have an even task count as we are consuming from metric & log
+            // topics only
+            numTasksInGroup = 2;
 
             if (groupNum < 1 || groupNum > 2) {
                 return null;
             }
 
-            numTasksInGroup = 2;
+        } else if (connector.startsWith("es") && length % 4 == 0) {
 
-        } else if (connector.startsWith("es")) {
+            // Above condition checks for S3 connector to have a task count which is a multiple of 4 as we are consuming
+            // from log, metric, control & trace topics
+            numTasksInGroup = 4;
 
             if (groupNum < 1 || groupNum > 4) {
                 return null;
             }
 
-            numTasksInGroup = 4;
-
         } else {
+
+            numTasksInGroup = length;
 
             if (groupNum != 1) {
                 return null;
             }
-
-            numTasksInGroup = length;
         }
 
         if (numTasksInGroup == 0) {
             return null;
         }
 
+        // Number of tasks in one group
         int groupLength = length / numTasksInGroup;
         int itemsToSkip = groupLength * (groupNum - 1);
 
