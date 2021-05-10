@@ -66,7 +66,7 @@ versions += [
   avro: "1.9.2",
   avroPlugin: "0.17.0",
   bcpkix: "1.63",
-  checkstyle: "8.20",
+  checkstyle: "8.36.2",
   commonsCli: "1.4",
   commonsCodec: "1.15",
   gradle: "5.6.2",
