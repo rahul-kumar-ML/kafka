@@ -100,7 +100,7 @@ versions += [
   kafka_24: "2.4.0",
   kafka_25: "2.5.0",
   lz4: "1.7.1",
-  mavenArtifact: "3.6.3",
+  mavenArtifact: "3.8.1",
   metrics: "2.2.0",
   mockito: "3.2.4",
   netty: "4.1.62.Final",
