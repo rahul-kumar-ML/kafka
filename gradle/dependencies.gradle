@@ -102,7 +102,7 @@ versions += [
   spotbugsPlugin: "1.6.9",
   spotlessPlugin: "3.23.0",
   zkclient: "0.11",
-  zookeeper: "3.5.9",
+  zookeeper: "3.4.14",
   zstd: "1.4.0-1"
 ]
 
