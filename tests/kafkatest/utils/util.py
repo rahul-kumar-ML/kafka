@@ -137,9 +137,6 @@ def is_version(node, version_list, proc_grep_string="kafka", logger=None):
     if not r and logger is not None:
         logger.warning("%s: %s version mismatch: expected %s, actual %s, ps line %s" % \
                        (str(node), proc_grep_string, version_list, versions, psLine))
-    else:
-        logger.info("No version mismatch: expected %s, actual %s, ps line %s" % \
-                       (version_list, versions, psLine))
     return r
 
 
