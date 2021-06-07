@@ -783,7 +783,11 @@ public class ConfigDef {
      * The config types
      */
     public enum Type {
-        BOOLEAN, STRING, INT, SHORT, LONG, DOUBLE, LIST, CLASS, PASSWORD
+        BOOLEAN, STRING, INT, SHORT, LONG, DOUBLE, LIST, CLASS, PASSWORD;
+
+        public boolean isSensitive() {
+            return this == PASSWORD;
+        }
     }
 
     /**
@@ -1084,6 +1088,10 @@ public class ConfigDef {
 
         public boolean hasDefault() {
             return !NO_DEFAULT_VALUE.equals(this.defaultValue);
+        }
+
+        public Type type() {
+            return type;
         }
     }
 
