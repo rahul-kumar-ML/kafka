@@ -2523,29 +2523,26 @@ public class DistributedHerderTest {
                                  final List<ConnectorTaskId> assignedTasks,
                                  int delay) {
         member.ensureActive();
-        PowerMock.expectLastCall().andAnswer(new IAnswer<Object>() {
-            @Override
-            public Object answer() throws Throwable {
-                ExtendedAssignment assignment;
-                if (!revokedConnectors.isEmpty() || !revokedTasks.isEmpty()) {
-                    rebalanceListener.onRevoked(leader, revokedConnectors, revokedTasks);
-                }
-
-                if (connectProtocolVersion == CONNECT_PROTOCOL_V0) {
-                    assignment = new ExtendedAssignment(
-                            connectProtocolVersion, error, leader, leaderUrl, offset,
-                            assignedConnectors, assignedTasks,
-                            Collections.emptyList(), Collections.emptyList(), 0);
-                } else {
-                    assignment = new ExtendedAssignment(
-                            connectProtocolVersion, error, leader, leaderUrl, offset,
-                            new ArrayList<>(assignedConnectors), new ArrayList<>(assignedTasks),
-                            new ArrayList<>(revokedConnectors), new ArrayList<>(revokedTasks), delay);
-                }
-                rebalanceListener.onAssigned(assignment, 3);
-                time.sleep(100L);
-                return null;
+        PowerMock.expectLastCall().andAnswer(() -> {
+            ExtendedAssignment assignment;
+            if (!revokedConnectors.isEmpty() || !revokedTasks.isEmpty()) {
+                rebalanceListener.onRevoked(leader, revokedConnectors, revokedTasks);
             }
+
+            if (connectProtocolVersion == CONNECT_PROTOCOL_V0) {
+                assignment = new ExtendedAssignment(
+                        connectProtocolVersion, error, leader, leaderUrl, offset,
+                        assignedConnectors, assignedTasks,
+                        Collections.emptyList(), Collections.emptyList(), 0);
+            } else {
+                assignment = new ExtendedAssignment(
+                        connectProtocolVersion, error, leader, leaderUrl, offset,
+                        new ArrayList<>(assignedConnectors), new ArrayList<>(assignedTasks),
+                        new ArrayList<>(revokedConnectors), new ArrayList<>(revokedTasks), delay);
+            }
+            rebalanceListener.onAssigned(assignment, 3);
+            time.sleep(100L);
+            return null;
         });
 
         if (!revokedConnectors.isEmpty()) {
