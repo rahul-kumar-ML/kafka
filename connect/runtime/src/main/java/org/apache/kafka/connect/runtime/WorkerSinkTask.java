@@ -364,12 +364,11 @@ class WorkerSinkTask extends WorkerTask {
             context.timeout(-1L);
         }
 
-        log.trace("{} Polling consumer with timeout {} ms", this, timeoutMs);
-        log.info("Polling consumer {} at {} with timeout {} ms",
-            consumer.assignment().toString(), System.currentTimeMillis(), timeoutMs);
+        log.info("Polling consumer {} at {} with timeout {} ms", consumer.assignment().toString(),
+            System.currentTimeMillis(), timeoutMs);
+
         ConsumerRecords<byte[], byte[]> msgs = pollConsumer(timeoutMs);
         assert messageBatch.isEmpty() || msgs.isEmpty();
-        log.trace("{} Polling returned {} messages", this, msgs.count());
 
         convertMessages(msgs);
         deliverMessages();
@@ -516,9 +515,12 @@ class WorkerSinkTask extends WorkerTask {
 
     private void convertMessages(ConsumerRecords<byte[], byte[]> msgs) {
         origOffsets.clear();
+
         int byteSize = 0;
         String topic = "NONE";
         int partition = -1;
+        long start = System.currentTimeMillis();
+
         for (ConsumerRecord<byte[], byte[]> msg : msgs) {
             log.trace("{} Consuming and converting message in topic '{}' partition {} at offset {} and timestamp {}",
                     this, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
@@ -545,11 +547,16 @@ class WorkerSinkTask extends WorkerTask {
                 );
             }
         }
-        log.info("Polling returned bytes {} / messages {} from topic '{}' partition {}",
-            byteSize,
-            msgs.count(),
-            topic,
-            partition);
+
+        if (partition != -1) {
+            log.info("Serialising and transforming batch of bytes {} / messages {} from {}-{} took {} ms",
+                byteSize,
+                msgs.count(),
+                topic,
+                partition,
+                System.currentTimeMillis() - start);
+        }
+
         sinkTaskMetricsGroup.recordConsumedOffsets(origOffsets);
     }
 
