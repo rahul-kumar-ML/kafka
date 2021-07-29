@@ -72,9 +72,19 @@ allprojects {
       }
     }
     configurations {
+      all {
+        resolutionStrategy {
+          dependencySubstitution {
+            substitute module("log4j:log4j:1.2.17") because "we use a custom version with security patches" with module("io.confluent:confluent-log4j:1.2.17-cp2")
+          }
+        }
+      }
       runtime {
         resolutionStrategy {
-          force "com.fasterxml.jackson.core:jackson-annotations:$versions.jackson"
+          force(
+                  "com.fasterxml.jackson.core:jackson-annotations:$versions.jackson",
+                  libs.commonsCodec
+          )
         }
       }
     }
@@ -141,6 +151,14 @@ if (file('.git').exists()) {
 }
 
 subprojects {
+
+  // enable running :dependencies task recursively on all subprojects
+  // eg: ./gradlew allDeps
+  task allDeps(type: DependencyReportTask) {}
+  // enable running :dependencyInsight task recursively on all subprojects
+  // eg: ./gradlew allDepInsight --configuration runtime --dependency com.fasterxml.jackson.core:jackson-databind
+  task allDepInsight(type: DependencyInsightReportTask) doLast {}
+
   apply plugin: 'java'
   // apply the eclipse plugin only to subprojects that hold code. 'connect' is just a folder.
   if (!project.name.equals('connect')) {
@@ -369,7 +387,7 @@ subprojects {
   checkstyle {
     configFile = new File(rootDir, "checkstyle/checkstyle.xml")
     configProperties = checkstyleConfigProperties("import-control.xml")
-    toolVersion = '8.10'
+    toolVersion = '8.29'
   }
 
   configure(checkstyleMain) {
