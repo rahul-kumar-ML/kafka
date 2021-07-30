@@ -1430,7 +1430,10 @@ project(':support-metrics-client') {
   group = "io.confluent.support"
 
   dependencies {
-    compile libs.avro
+    compile (libs.avro) {
+      exclude module: 'commons-compress'
+    }
+    compile libs.commonsCompress
     compile libs.httpclient
     compile libs.httpmime
     compile libs.slf4jlog4j
@@ -1512,7 +1515,10 @@ project(':support-metrics-common') {
   group = "io.confluent.support"
 
   dependencies {
-    compile libs.avro
+    compile (libs.avro) {
+      exclude module: 'commons-compress'
+    }
+    compile libs.commonsCompress
     // ensure we use the jackson version we define instead of what is defined by `avro`
     compile libs.jacksonDatabind
     compile libs.httpclient
