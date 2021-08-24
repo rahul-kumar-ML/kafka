@@ -102,6 +102,7 @@ allprojects {
       if (name != "zinc") {
         resolutionStrategy {
           force(
+            libs.commonsCodec,
             // be explicit about the javassist dependency version instead of relying on the transitive version
             libs.javassist,
             // ensure we have a single version in the classpath despite transitive dependencies
