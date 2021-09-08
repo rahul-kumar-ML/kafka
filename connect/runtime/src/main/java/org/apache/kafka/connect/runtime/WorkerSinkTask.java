@@ -95,7 +95,6 @@ class WorkerSinkTask extends WorkerTask {
     private boolean pausedForRedelivery;
     private boolean committing;
     private boolean taskStopped;
-    private long startTime = System.nanoTime();
     private final WorkerErrantRecordReporter workerErrantRecordReporter;
 
     public WorkerSinkTask(ConnectorTaskId id,
@@ -365,12 +364,11 @@ class WorkerSinkTask extends WorkerTask {
             context.timeout(-1L);
         }
 
-        log.info("Previous poll to consumer {} was {} ms ago", consumer.assignment().toString(), (System.nanoTime() - startTime) / 1000);
-        startTime = System.nanoTime();
+        log.info("Polling consumer {} at {} with timeout {} ms", consumer.assignment().toString(),
+            System.currentTimeMillis(), timeoutMs);
 
         ConsumerRecords<byte[], byte[]> msgs = pollConsumer(timeoutMs);
         assert messageBatch.isEmpty() || msgs.isEmpty();
-        log.info("Consumer {} took {} ms to fetch records from kafka", consumer.assignment().toString(), (System.nanoTime() - startTime) / 1000);
 
         convertMessages(msgs);
         deliverMessages();
@@ -521,7 +519,7 @@ class WorkerSinkTask extends WorkerTask {
         int byteSize = 0;
         String topic = "NONE";
         int partition = -1;
-        long start = System.nanoTime();
+        long start = System.currentTimeMillis();
 
         for (ConsumerRecord<byte[], byte[]> msg : msgs) {
             log.trace("{} Consuming and converting message in topic '{}' partition {} at offset {} and timestamp {}",
@@ -556,7 +554,7 @@ class WorkerSinkTask extends WorkerTask {
                 msgs.count(),
                 topic,
                 partition,
-                (System.nanoTime() - start) / 1000);
+                System.currentTimeMillis() - start);
         }
 
         sinkTaskMetricsGroup.recordConsumedOffsets(origOffsets);
