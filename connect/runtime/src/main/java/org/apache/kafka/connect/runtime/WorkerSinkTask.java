@@ -365,12 +365,12 @@ class WorkerSinkTask extends WorkerTask {
             context.timeout(-1L);
         }
 
-        log.info("Previous poll to consumer {} was {} ms ago", consumer.assignment().toString(), (System.nanoTime() - startTime) / 1000000);
+        log.info("Previous poll to consumer {} was {} ms ago", consumer.assignment().toString(), (System.nanoTime() - startTime) / 1000);
         startTime = System.nanoTime();
 
         ConsumerRecords<byte[], byte[]> msgs = pollConsumer(timeoutMs);
         assert messageBatch.isEmpty() || msgs.isEmpty();
-        log.info("Consumer {} took {} ms to fetch records from kafka", consumer.assignment().toString(), (System.nanoTime() - startTime) / 1000000);
+        log.info("Consumer {} took {} ms to fetch records from kafka", consumer.assignment().toString(), (System.nanoTime() - startTime) / 1000);
 
         convertMessages(msgs);
         deliverMessages();
@@ -556,7 +556,7 @@ class WorkerSinkTask extends WorkerTask {
                 msgs.count(),
                 topic,
                 partition,
-                (System.nanoTime() - start) / 1000000);
+                (System.nanoTime() - start) / 1000);
         }
 
         sinkTaskMetricsGroup.recordConsumedOffsets(origOffsets);
