@@ -365,8 +365,6 @@ class WorkerSinkTask extends WorkerTask {
         }
 
         log.trace("{} Polling consumer with timeout {} ms", this, timeoutMs);
-        log.info("Polling consumer {} at {} with timeout {} ms",
-            consumer.assignment().toString(), System.currentTimeMillis(), timeoutMs);
         ConsumerRecords<byte[], byte[]> msgs = pollConsumer(timeoutMs);
         assert messageBatch.isEmpty() || msgs.isEmpty();
         log.trace("{} Polling returned {} messages", this, msgs.count());
@@ -381,8 +379,7 @@ class WorkerSinkTask extends WorkerTask {
     }
 
     private void doCommitSync(Map<TopicPartition, OffsetAndMetadata> offsets, int seqno) {
-        log.debug("{} Committing offsets synchronously using sequence number {}: {}", this, seqno,
-            offsets);
+        log.info("{} Committing offsets synchronously using sequence number {}: {}", this, seqno, offsets);
         try {
             consumer.commitSync(offsets);
             onCommitCompleted(null, seqno, offsets);
@@ -396,8 +393,7 @@ class WorkerSinkTask extends WorkerTask {
     }
 
     private void doCommitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, final int seqno) {
-        log.debug("{} Committing offsets asynchronously using sequence number {}: {}", this, seqno,
-            offsets);
+        log.info("{} Committing offsets asynchronously using sequence number {}: {}", this, seqno, offsets);
         OffsetCommitCallback cb = new OffsetCommitCallback() {
             @Override
             public void onComplete(Map<TopicPartition, OffsetAndMetadata> offsets, Exception error) {
@@ -493,6 +489,7 @@ class WorkerSinkTask extends WorkerTask {
         doCommit(commitableOffsets, closing, commitSeqno);
     }
 
+
     @Override
     public String toString() {
         return "WorkerSinkTask{" +
@@ -516,16 +513,9 @@ class WorkerSinkTask extends WorkerTask {
 
     private void convertMessages(ConsumerRecords<byte[], byte[]> msgs) {
         origOffsets.clear();
-        int byteSize = 0;
-        String topic = "NONE";
-        int partition = -1;
         for (ConsumerRecord<byte[], byte[]> msg : msgs) {
             log.trace("{} Consuming and converting message in topic '{}' partition {} at offset {} and timestamp {}",
                     this, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
-
-            byteSize += msg.value().length;
-            topic = msg.topic();
-            partition = msg.partition();
 
             retryWithToleranceOperator.consumerRecord(msg);
 
@@ -545,11 +535,6 @@ class WorkerSinkTask extends WorkerTask {
                 );
             }
         }
-        log.info("Polling returned bytes {} / messages {} from topic '{}' partition {}",
-            byteSize,
-            msgs.count(),
-            topic,
-            partition);
         sinkTaskMetricsGroup.recordConsumedOffsets(origOffsets);
     }
 
