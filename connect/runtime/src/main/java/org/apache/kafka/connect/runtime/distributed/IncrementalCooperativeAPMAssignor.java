@@ -326,21 +326,21 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
         Map<String, Set<ConnectorTaskId>> newAllocation = new HashMap<>();
 
         // Denotes the distribution of task groups
-        Map<String, List<TaskCroup>> intermediateAllocation = new HashMap<>();
+        Map<String, List<TaskGroup>> intermediateAllocation = new HashMap<>();
 
         for (String worker : workers) {
             newAllocation.computeIfAbsent(worker, k -> new HashSet<>());
             intermediateAllocation.computeIfAbsent(worker, k -> new ArrayList<>());
         }
 
-        List<TaskCroup> allGroups = new ArrayList<>();
+        List<TaskGroup> allGroups = new ArrayList<>();
 
-        // Below loop i.e. 1 to 4 denotes the task groups. 1st group is for log data, 2nd is for metric and so on
-        // es connectors will need access to all four groups but s3 connectors only need first 2 groups
-        // Above condition has been handled in getTaskCroup function
-        for (int t : IntStream.range(1, 5).toArray()) {
+        // Below loop i.e. 1 to 5 denotes the task groups. 1st group is for log data, 2nd is for metric and so on
+        // es connectors will need access to all five groups but s3 connectors only need first 2 groups
+        // Above condition has been handled in getTaskGroup function
+        for (int t : IntStream.range(1, 6).toArray()) {
             for (String connector : configuredConnectors.stream().sorted().collect(Collectors.toList())) {
-                TaskCroup group = getTaskCroup(connector, configuredTasks, t);
+                TaskGroup group = getTaskGroup(connector, configuredTasks, t);
                 if (group != null) {
                     // Assign same task group object as many times as there are tasks in it.
                     // Later phases will using group.pop which will reduce the tasks in the object
@@ -353,7 +353,7 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
 
         // Perform round-robin assignment of task groups
         int count = 0;
-        for (TaskCroup group : allGroups) {
+        for (TaskGroup group : allGroups) {
             int index = count % workers.size();
             String worker = workers.get(index);
             intermediateAllocation.get(worker).add(group);
@@ -370,7 +370,7 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
 
                 for (int index = 0; index < intermediateAllocation.get(currentWorker).size(); index++) {
 
-                    TaskCroup group = intermediateAllocation.get(currentWorker).get(index);
+                    TaskGroup group = intermediateAllocation.get(currentWorker).get(index);
 
                     if (group.contains(taskId)) {
                         group.remove(taskId);
@@ -384,7 +384,7 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
 
         // Once the comparison with current allocation is done, assign pending tasks
         for (String worker : intermediateAllocation.keySet().stream().sorted().collect(Collectors.toList())) {
-            for (TaskCroup group : intermediateAllocation.get(worker)) {
+            for (TaskGroup group : intermediateAllocation.get(worker)) {
                 ConnectorTaskId taskId = group.pop();
                 if (taskId != null) {
                     newAllocation.get(worker).add(taskId);
@@ -403,12 +403,12 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
         delay = 0;
     }
 
-    private static class TaskCroup {
+    private static class TaskGroup {
 
         private final List<Integer> taskIds;
         private final String connector;
 
-        private TaskCroup(String connector, List<Integer> taskIds) {
+        private TaskGroup(String connector, List<Integer> taskIds) {
             this.connector = connector;
             this.taskIds = taskIds;
         }
@@ -437,18 +437,18 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
         }
     }
 
-    private TaskCroup getTaskCroup(String connector, Set<ConnectorTaskId> configuredTasks, Integer groupNum) {
+    private TaskGroup getTaskGroup(String connector, Set<ConnectorTaskId> configuredTasks, Integer groupNum) {
 
-        int numTasksInGroup;
+        int numTopicsToConsumeFrom;
         List<Integer> connectorTasks = configuredTasks.stream().filter(v -> connector.equals(v.connector())).map(ConnectorTaskId::task).sorted().collect(Collectors.toList());
         int length = connectorTasks.size();
 
-        // FixMe: rather than using 2/4 etc. check the task config to find out #topics its supposed to consume from
+        // FixMe: rather than using 2/4/5 etc. check the task config to find out #topics its supposed to consume from
         if (connector.startsWith("s3") && length % 2 == 0) {
 
             // Above condition checks for S3 connector to have an even task count as we are consuming from metric & log
             // topics only
-            numTasksInGroup = 2;
+            numTopicsToConsumeFrom = 2;
 
             if (groupNum < 1 || groupNum > 2) {
                 return null;
@@ -456,29 +456,40 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
 
         } else if (connector.startsWith("es") && length % 4 == 0) {
 
-            // Above condition checks for S3 connector to have a task count which is a multiple of 4 as we are consuming
-            // from log, metric, control & trace topics
-            numTasksInGroup = 4;
+            // Above condition checks for ES connector to have a task count which is a multiple of 4 as we are consuming
+            // from log, metric, control & trace topics. Old profiles
+            numTopicsToConsumeFrom = 4;
 
             if (groupNum < 1 || groupNum > 4) {
                 return null;
             }
 
+        } else if (connector.startsWith("es") && length % 5 == 0) {
+
+            // Above condition checks for ES connector to have a task count which is a multiple of 5 as we are consuming
+            // from log, metric, control, trace & profile topics
+            numTopicsToConsumeFrom = 5;
+
+            if (groupNum < 1 || groupNum > 5) {
+                return null;
+            }
+
         } else {
 
-            numTasksInGroup = length;
+            // Unknown connector. Hence assume that each task would consume from different topics
+            numTopicsToConsumeFrom = length;
 
             if (groupNum != 1) {
                 return null;
             }
         }
 
-        if (numTasksInGroup == 0) {
+        if (numTopicsToConsumeFrom == 0) {
             return null;
         }
 
-        // Number of tasks in one group
-        int groupLength = length / numTasksInGroup;
+        // Number of task types in one group
+        int groupLength = length / numTopicsToConsumeFrom;
         int itemsToSkip = groupLength * (groupNum - 1);
 
         List<Integer> tasksInGroup = new ArrayList<>();
@@ -487,7 +498,7 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
             tasksInGroup.add(connectorTasks.get(itemsToSkip + i));
         }
 
-        return new TaskCroup(connector, tasksInGroup);
+        return new TaskGroup(connector, tasksInGroup);
     }
 
     private Map<String, ExtendedAssignment> fillAssignments(Collection<String> members, short error,

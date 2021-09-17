@@ -308,14 +308,24 @@ class WorkerSinkTask extends WorkerTask {
             // #max-tasks to determine which topic to consume from
             int maxTasks = Integer.parseInt(taskConfig.get(SinkConnectorConfig.TASKS_MAX_CONFIG));
 
-            if (id.connector().startsWith("es-") && maxTasks % 4 != 0) {
-                throw new ConnectException(String.format("Elasticsearch connector %s has a task count which isn't multiple of 4", id.connector()));
+            if (id.connector().startsWith("es-") && (maxTasks % 4 != 0 && maxTasks % 5 != 0)) {
+                throw new ConnectException(String.format("Elasticsearch connector %s has a task count which isn't multiple of 4/5", id.connector()));
             } else if (id.connector().startsWith("s3-") && maxTasks % 2 != 0) {
                 throw new ConnectException(String.format("S3 connector %s has a task count which isn't multiple of 2", id.connector()));
             }
 
-            // Number of tasks in group after dividing into n groups (n==4 for ES and n==2 for S3 connector)
-            int groupLength = id.connector().startsWith("es-") ? maxTasks / 4 : maxTasks / 2;
+            int groupLength = 0;
+
+            // Number of tasks in group after dividing into n groups (n==4/5 for ES and n==2 for S3 connector)
+            if (id.connector().startsWith("es-")) {
+                if (maxTasks % 4 == 0) {
+                    groupLength = maxTasks / 4;
+                } else if (maxTasks % 5 == 0) {
+                    groupLength = maxTasks / 5;
+                }
+            } else if (id.connector().startsWith("s3-")) {
+                groupLength = maxTasks / 2;
+            }
 
             String topicType = "";
 
@@ -325,8 +335,10 @@ class WorkerSinkTask extends WorkerTask {
                 topicType = "metric";  // Group number 2 -> dedicated to metric topic
             } else if ((id.task() + 1) <= (groupLength * 3)) {
                 topicType = "control"; // Group number 3 -> dedicated to control topic
-            } else {
+            } else if ((id.task() + 1) <= (groupLength * 4)) {
                 topicType = "trace";   // Group number 4 -> dedicated to trace topic
+            } else if ((id.task() + 1) <= (groupLength * 5)) {
+                topicType = "profile";   // Group number 5 -> dedicated to profile topic
             }
 
             List<String> topics = new ArrayList<>();
