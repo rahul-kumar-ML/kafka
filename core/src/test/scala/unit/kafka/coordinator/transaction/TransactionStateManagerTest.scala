@@ -130,7 +130,7 @@ class TransactionStateManagerTest {
     transactionManager.putTransactionStateIfNotExists(metadata2)
 
     def cachedProducerEpoch(transactionalId: String): Option[Short] = {
-      transactionManager.getTransactionState(transactionalId).toOption.flatten
+      transactionManager.getTransactionState(transactionalId).right.toOption.flatten
         .map(_.transactionMetadata.producerEpoch)
     }
 
@@ -190,8 +190,9 @@ class TransactionStateManagerTest {
     val coordinatorEpoch = 0
     val partitionAndLeaderEpoch = TransactionPartitionAndLeaderEpoch(partitionId, coordinatorEpoch)
 
-    val loadingThread = new Thread(() => {
-      transactionManager.loadTransactionsForTxnTopicPartition(partitionId, coordinatorEpoch, (_, _, _, _, _) => ())
+    val loadingThread = new Thread(new Runnable {
+      override def run(): Unit =
+        transactionManager.loadTransactionsForTxnTopicPartition(partitionId, coordinatorEpoch, (_, _, _, _, _) => ())
     })
     loadingThread.start()
     TestUtils.waitUntilTrue(() => transactionManager.loadingPartitions.contains(partitionAndLeaderEpoch),
@@ -965,9 +966,13 @@ class TransactionStateManagerTest {
       EasyMock.capture(capturedArgument),
       EasyMock.anyObject().asInstanceOf[Option[ReentrantLock]],
       EasyMock.anyObject())
-    ).andAnswer(() => capturedArgument.getValue.apply(
-      Map(new TopicPartition(TRANSACTION_STATE_TOPIC_NAME, partitionId) ->
-        new PartitionResponse(error, 0L, RecordBatch.NO_TIMESTAMP, 0L)))
+    ).andAnswer(new IAnswer[Unit] {
+        override def answer(): Unit = capturedArgument.getValue.apply(
+          Map(new TopicPartition(TRANSACTION_STATE_TOPIC_NAME, partitionId) ->
+            new PartitionResponse(error, 0L, RecordBatch.NO_TIMESTAMP, 0L)
+          )
+        )
+      }
     )
     EasyMock.expect(replicaManager.getMagic(EasyMock.anyObject()))
       .andStubReturn(Some(RecordBatch.MAGIC_VALUE_V1))
