@@ -21,6 +21,8 @@ import org.apache.kafka.clients.ClientUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.NetworkClient;
+import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -30,6 +32,8 @@ import org.apache.kafka.clients.producer.internals.KafkaProducerMetrics;
 import org.apache.kafka.clients.producer.internals.ProducerInterceptors;
 import org.apache.kafka.clients.producer.internals.ProducerMetadata;
 import org.apache.kafka.clients.producer.internals.ProducerMetrics;
+import org.apache.kafka.clients.producer.internals.ProducerTelemetryRegistry;
+import org.apache.kafka.clients.producer.internals.ProducerTopicTelemetryRegistry;
 import org.apache.kafka.clients.producer.internals.RecordAccumulator;
 import org.apache.kafka.clients.producer.internals.Sender;
 import org.apache.kafka.clients.producer.internals.TransactionManager;
@@ -258,6 +262,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final ApiVersions apiVersions;
     private final TransactionManager transactionManager;
 
+    private final TelemetryManagementInterface tmi;
+    private final ProducerTelemetryRegistry producerTelemetryRegistry;
+    private final ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry;
+
     /**
      * A producer is instantiated by providing a set of key-value pairs as configuration. Valid configuration strings
      * are documented <a href="http://kafka.apache.org/documentation.html#producerconfigs">here</a>. Values can be
@@ -356,6 +364,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     config.originalsWithPrefix(CommonClientConfigs.METRICS_CONTEXT_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time, metricsContext);
             this.producerMetrics = new KafkaProducerMetrics(metrics);
+            this.tmi = new TelemetryManagementInterface(time, clientId);
+            this.producerTelemetryRegistry = new ProducerTelemetryRegistry(tmi.metrics());
+            this.producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(tmi.metrics());
             this.partitioner = config.getConfiguredInstance(
                     ProducerConfig.PARTITIONER_CLASS_CONFIG,
                     Partitioner.class,
@@ -408,7 +419,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     time,
                     apiVersions,
                     transactionManager,
-                    new BufferPool(this.totalMemorySize, config.getInt(ProducerConfig.BATCH_SIZE_CONFIG), metrics, time, PRODUCER_METRIC_GROUP_NAME));
+                    new BufferPool(this.totalMemorySize, config.getInt(ProducerConfig.BATCH_SIZE_CONFIG), metrics, time, PRODUCER_METRIC_GROUP_NAME),
+                    configureAcks(config, log),
+                    producerTelemetryRegistry,
+                    producerTopicTelemetryRegistry);
 
             List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(
                     config.getList(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG),
@@ -464,6 +478,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 true,
                 apiVersions,
                 throttleTimeSensor,
+                tmi,
+                new ClientTelemetryRegistry(tmi.metrics()),
                 logContext);
         short acks = configureAcks(producerConfig, log);
         return new Sender(logContext,
@@ -475,6 +491,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 acks,
                 producerConfig.getInt(ProducerConfig.RETRIES_CONFIG),
                 metricsRegistry.senderMetrics,
+                producerTelemetryRegistry,
+                producerTopicTelemetryRegistry,
                 time,
                 requestTimeoutMs,
                 producerConfig.getLong(ProducerConfig.RETRY_BACKOFF_MS_CONFIG),
@@ -1168,6 +1186,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         }
     }
 
+    public String clientInstanceId(Duration timeout) {
+        return tmi != null ? tmi.clientInstanceId(timeout) : null;
+    }
+
     /**
      * Get the full set of internal metrics maintained by the producer.
      */
@@ -1263,6 +1285,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
         Utils.closeQuietly(interceptors, "producer interceptors", firstException);
         Utils.closeQuietly(producerMetrics, "producer metrics wrapper", firstException);
+        // TODO: KIRK_TODO: figure out where/how to properly close telemetry metrics given that we
+        //       need to write out our terminal set of metrics when closing...
+        Utils.closeQuietly(tmi, "client telemetry", firstException);
         Utils.closeQuietly(metrics, "producer metrics", firstException);
         Utils.closeQuietly(keySerializer, "producer keySerializer", firstException);
         Utils.closeQuietly(valueSerializer, "producer valueSerializer", firstException);

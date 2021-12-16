@@ -31,6 +31,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.common.record.DefaultRecord;
+import org.apache.kafka.common.record.LegacyRecord;
 import org.apache.kafka.common.utils.ProducerIdAndEpoch;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
@@ -84,6 +86,9 @@ public final class RecordAccumulator {
     private int drainIndex;
     private final TransactionManager transactionManager;
     private long nextBatchExpiryTimeMs = Long.MAX_VALUE; // the earliest time (absolute) a batch will expire.
+    private final short acks;
+    private final ProducerTelemetryRegistry producerTelemetryRegistry;
+    private final ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry;
 
     /**
      * Create a new record accumulator
@@ -113,7 +118,10 @@ public final class RecordAccumulator {
                              Time time,
                              ApiVersions apiVersions,
                              TransactionManager transactionManager,
-                             BufferPool bufferPool) {
+                             BufferPool bufferPool,
+                             short acks,
+                             ProducerTelemetryRegistry producerTelemetryRegistry,
+                             ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry) {
         this.log = logContext.logger(RecordAccumulator.class);
         this.drainIndex = 0;
         this.closed = false;
@@ -131,6 +139,9 @@ public final class RecordAccumulator {
         this.time = time;
         this.apiVersions = apiVersions;
         this.transactionManager = transactionManager;
+        this.acks = acks;
+        this.producerTelemetryRegistry = producerTelemetryRegistry;
+        this.producerTopicTelemetryRegistry = producerTopicTelemetryRegistry;
         registerMetrics(metrics, metricGrpName);
     }
 
@@ -197,7 +208,7 @@ public final class RecordAccumulator {
             synchronized (dq) {
                 if (closed)
                     throw new KafkaException("Producer closed while send in progress");
-                RecordAppendResult appendResult = tryAppend(timestamp, key, value, headers, callback, dq, nowMs);
+                RecordAppendResult appendResult = tryAppend(tp, timestamp, key, value, headers, callback, dq, nowMs);
                 if (appendResult != null)
                     return appendResult;
             }
@@ -220,7 +231,7 @@ public final class RecordAccumulator {
                 if (closed)
                     throw new KafkaException("Producer closed while send in progress");
 
-                RecordAppendResult appendResult = tryAppend(timestamp, key, value, headers, callback, dq, nowMs);
+                RecordAppendResult appendResult = tryAppend(tp, timestamp, key, value, headers, callback, dq, nowMs);
                 if (appendResult != null) {
                     // Somebody else found us a batch, return the one we waited for! Hopefully this doesn't happen often...
                     return appendResult;
@@ -261,15 +272,17 @@ public final class RecordAccumulator {
      *  and memory records built) in one of the following cases (whichever comes first): right before send,
      *  if it is expired, or when the producer is closed.
      */
-    private RecordAppendResult tryAppend(long timestamp, byte[] key, byte[] value, Header[] headers,
+    private RecordAppendResult tryAppend(TopicPartition tp, long timestamp, byte[] key, byte[] value, Header[] headers,
                                          Callback callback, Deque<ProducerBatch> deque, long nowMs) {
         ProducerBatch last = deque.peekLast();
         if (last != null) {
             FutureRecordMetadata future = last.tryAppend(timestamp, key, value, headers, callback, nowMs);
-            if (future == null)
+            if (future == null) {
                 last.closeForRecordAppends();
-            else
+            } else {
+                incrementQueueBytesTelemetry(tp, timestamp, key, value, headers);
                 return new RecordAppendResult(future, deque.size() > 1 || last.isFull(), false, false);
+            }
         }
         return null;
     }
@@ -607,6 +620,7 @@ public final class RecordAccumulator {
                         transactionManager.addInFlightBatch(batch);
                     }
                     batch.close();
+                    decrementQueueBytesTelemetry(tp, batch.records().sizeInBytes());
                     size += batch.records().sizeInBytes();
                     ready.add(batch);
 
@@ -802,6 +816,43 @@ public final class RecordAccumulator {
 
     public void unmutePartition(TopicPartition tp) {
         muted.remove(tp);
+    }
+
+    private void incrementQueueBytesTelemetry(TopicPartition tp, long timestamp, byte[] key, byte[] value, Header[] headers) {
+        // TODO: KIRK_TODO: need to know the proper place to call this
+        // TODO: KIRK_TODO: need to know the proper means/place to determine the size
+        int offsetDelta = -1;
+        byte magic = apiVersions.maxUsableProduceMagic();
+        int size;
+
+        if (magic > RecordBatch.MAGIC_VALUE_V1) {
+            size = DefaultRecord.sizeInBytes(offsetDelta,
+                timestamp,
+                key != null ? key.length : 0,
+                value != null ? value.length : 0,
+                headers);
+        } else {
+            size = LegacyRecord.recordSize(magic,
+                key != null ? key.length : 0,
+                value != null ? value.length : 0);
+        }
+
+        producerTelemetryRegistry.queueBytes().record(size);
+        producerTelemetryRegistry.queueMessages().record(1);
+        producerTopicTelemetryRegistry.queueBytes(tp.topic(), tp.partition(), acks).record(size);
+        producerTopicTelemetryRegistry.queueCount(tp.topic(), tp.partition(), acks).record(1);
+    }
+
+    private void decrementQueueBytesTelemetry(TopicPartition tp, int size) {
+        // TODO: KIRK_TODO: we need an accurate record count passed in. I don't yet know
+        //       how to get it from the RecordBatch or MemoryRecord or ???
+        // TODO: KIRK_TODO: need to know the proper place to call this
+        // TODO: KIRK_TODO: need to know the proper means/place to determine the size
+        int recordCount = 0;
+        producerTelemetryRegistry.queueBytes().record(-size);
+        producerTelemetryRegistry.queueMessages().record(-recordCount);
+        producerTopicTelemetryRegistry.queueBytes(tp.topic(), tp.partition(), acks).record(-size);
+        producerTopicTelemetryRegistry.queueCount(tp.topic(), tp.partition(), acks).record(-recordCount);
     }
 
     /**
