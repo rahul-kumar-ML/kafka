@@ -172,10 +172,14 @@ public class TransactionManagerTest {
         this.brokerNode = new Node(0, "localhost", 2211);
         this.accumulator = new RecordAccumulator(logContext, batchSize, CompressionType.NONE, 0, 0L,
                 deliveryTimeoutMs, metrics, metricGrpName, time, apiVersions, transactionManager,
-                new BufferPool(totalSize, batchSize, metrics, time, metricGrpName));
+                new BufferPool(totalSize, batchSize, metrics, time, metricGrpName),
+                (short) -1, new ProducerTelemetryRegistry(metrics), new ProducerTopicTelemetryRegistry(metrics));
+
+        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(metrics);
+        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(metrics);
 
         this.sender = new Sender(logContext, this.client, this.metadata, this.accumulator, true,
-                MAX_REQUEST_SIZE, ACKS_ALL, MAX_RETRIES, new SenderMetricsRegistry(metrics), this.time, REQUEST_TIMEOUT,
+                MAX_REQUEST_SIZE, ACKS_ALL, MAX_RETRIES, new SenderMetricsRegistry(metrics), producerTelemetryRegistry, producerTopicTelemetryRegistry, this.time, REQUEST_TIMEOUT,
                 50, transactionManager, apiVersions);
     }
 
@@ -3046,8 +3050,11 @@ public class TransactionManagerTest {
     public void testHealthyPartitionRetriesDuringEpochBump() throws InterruptedException {
         // Use a custom Sender to allow multiple inflight requests
         initializeTransactionManager(Optional.empty());
+        Metrics metrics = new Metrics(time);
+        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(metrics);
+        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(metrics);
         Sender sender = new Sender(logContext, this.client, this.metadata, this.accumulator, false,
-                MAX_REQUEST_SIZE, ACKS_ALL, MAX_RETRIES, new SenderMetricsRegistry(new Metrics(time)), this.time,
+                MAX_REQUEST_SIZE, ACKS_ALL, MAX_RETRIES, new SenderMetricsRegistry(metrics), producerTelemetryRegistry, producerTopicTelemetryRegistry, this.time,
                 REQUEST_TIMEOUT, 50, transactionManager, apiVersions);
         initializeIdempotentProducerId(producerId, epoch);
 
@@ -3170,8 +3177,11 @@ public class TransactionManagerTest {
     public void testFailedInflightBatchAfterEpochBump() throws InterruptedException {
         // Use a custom Sender to allow multiple inflight requests
         initializeTransactionManager(Optional.empty());
+        Metrics metrics = new Metrics(time);
+        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(metrics);
+        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(metrics);
         Sender sender = new Sender(logContext, this.client, this.metadata, this.accumulator, false,
-                MAX_REQUEST_SIZE, ACKS_ALL, MAX_RETRIES, new SenderMetricsRegistry(new Metrics(time)), this.time,
+                MAX_REQUEST_SIZE, ACKS_ALL, MAX_RETRIES, new SenderMetricsRegistry(metrics), producerTelemetryRegistry, producerTopicTelemetryRegistry, this.time,
                 REQUEST_TIMEOUT, 50, transactionManager, apiVersions);
         initializeIdempotentProducerId(producerId, epoch);
 

@@ -17,9 +17,11 @@
 
 package org.apache.kafka.clients.admin;
 
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientRequest;
 import org.apache.kafka.clients.ClientResponse;
+import org.apache.kafka.clients.ClientTelemetryRegistry;
 import org.apache.kafka.clients.ClientUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.DefaultHostResolver;
@@ -27,6 +29,8 @@ import org.apache.kafka.clients.HostResolver;
 import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.NetworkClient;
 import org.apache.kafka.clients.StaleMetadataException;
+import org.apache.kafka.clients.TelemetryManagementInterface;
+import org.apache.kafka.clients.TelemetryState;
 import org.apache.kafka.clients.admin.CreateTopicsResult.TopicMetadataAndConfig;
 import org.apache.kafka.clients.admin.DeleteAclsResult.FilterResult;
 import org.apache.kafka.clients.admin.DeleteAclsResult.FilterResults;
@@ -78,6 +82,7 @@ import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.errors.ApiException;
 import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.DisconnectException;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.InvalidRequestException;
 import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.KafkaStorageException;
@@ -336,6 +341,8 @@ public class KafkaAdminClient extends AdminClient {
      */
     private final AdminMetadataManager metadataManager;
 
+    private final TelemetryManagementInterface tmi;
+
     /**
      * The metrics for this KafkaAdminClient.
      */
@@ -509,6 +516,7 @@ public class KafkaAdminClient extends AdminClient {
             channelBuilder = ClientUtils.createChannelBuilder(config, time, logContext);
             selector = new Selector(config.getLong(AdminClientConfig.CONNECTIONS_MAX_IDLE_MS_CONFIG),
                     metrics, time, metricGrpPrefix, channelBuilder, logContext);
+            TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId, logContext);
             networkClient = new NetworkClient(
                 metadataManager.updater(),
                 null,
@@ -526,10 +534,12 @@ public class KafkaAdminClient extends AdminClient {
                 true,
                 apiVersions,
                 null,
+                tmi,
+                new ClientTelemetryRegistry(tmi.metrics()),
                 logContext,
                 (hostResolver == null) ? new DefaultHostResolver() : hostResolver);
             return new KafkaAdminClient(config, clientId, time, metadataManager, metrics, networkClient,
-                timeoutProcessorFactory, logContext);
+                timeoutProcessorFactory, logContext, tmi);
         } catch (Throwable exc) {
             closeQuietly(metrics, "Metrics");
             closeQuietly(networkClient, "NetworkClient");
@@ -549,8 +559,9 @@ public class KafkaAdminClient extends AdminClient {
         try {
             metrics = new Metrics(new MetricConfig(), new LinkedList<>(), time);
             LogContext logContext = createLogContext(clientId);
+            TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId, logContext);
             return new KafkaAdminClient(config, clientId, time, metadataManager, metrics,
-                client, null, logContext);
+                client, null, logContext, tmi);
         } catch (Throwable exc) {
             closeQuietly(metrics, "Metrics");
             throw new KafkaException("Failed to create new KafkaAdminClient", exc);
@@ -568,7 +579,8 @@ public class KafkaAdminClient extends AdminClient {
                              Metrics metrics,
                              KafkaClient client,
                              TimeoutProcessorFactory timeoutProcessorFactory,
-                             LogContext logContext) {
+                             LogContext logContext,
+                             TelemetryManagementInterface tmi) {
         this.clientId = clientId;
         this.log = logContext.logger(KafkaAdminClient.class);
         this.logContext = logContext;
@@ -576,6 +588,7 @@ public class KafkaAdminClient extends AdminClient {
         this.defaultApiTimeoutMs = configureDefaultApiTimeoutMs(config);
         this.time = time;
         this.metadataManager = metadataManager;
+        this.tmi = tmi;
         this.metrics = metrics;
         this.client = client;
         this.runnable = new AdminClientRunnable();
@@ -621,6 +634,27 @@ public class KafkaAdminClient extends AdminClient {
         long waitTimeMs = timeout.toMillis();
         if (waitTimeMs < 0)
             throw new IllegalArgumentException("The timeout cannot be negative.");
+
+        if (tmi != null) {
+            tmi.setState(TelemetryState.terminating);
+
+            // TODO: KIRK_TODO: figure out where/how to properly close telemetry metrics given
+            //       that we need to write out our terminal set of metrics when closing...
+            //            AtomicReference<Throwable> firstException = new AtomicReference<>();
+            //            Utils.closeQuietly(tmi, "client telemetry", firstException);
+            //            Throwable exception = firstException.get();
+            //
+            //            if (exception != null) {
+            //                if (exception instanceof InterruptException) {
+            //                    throw (InterruptException) exception;
+            //                }
+            //                throw new KafkaException("Failed to close Kafka admin client", exception);
+            //            }
+        }
+
+
+
+
         waitTimeMs = Math.min(TimeUnit.DAYS.toMillis(365), waitTimeMs); // Limit the timeout to a year.
         long now = time.milliseconds();
         long newHardShutdownTimeMs = now + waitTimeMs;
@@ -3405,6 +3439,10 @@ public class KafkaAdminClient extends AdminClient {
         return new DeleteConsumerGroupOffsetsResult(future.get(CoordinatorKey.byGroupId(groupId)), partitions);
     }
 
+    public String clientInstanceId(Duration timeout) {
+        return tmi != null ? tmi.clientInstanceId(timeout) : null;
+    }
+
     @Override
     public Map<MetricName, ? extends Metric> metrics() {
         return Collections.unmodifiableMap(this.metrics.metrics());
@@ -3754,7 +3792,7 @@ public class KafkaAdminClient extends AdminClient {
     @Override
     public ListOffsetsResult listOffsets(Map<TopicPartition, OffsetSpec> topicPartitionOffsets,
                                          ListOffsetsOptions options) {
-
+        System.out.println("Calling listOffsets, are ye?");
         // preparing topics list for asking metadata about them
         final Map<TopicPartition, KafkaFutureImpl<ListOffsetsResultInfo>> futures = new HashMap<>(topicPartitionOffsets.size());
         final Set<String> topics = new HashSet<>();

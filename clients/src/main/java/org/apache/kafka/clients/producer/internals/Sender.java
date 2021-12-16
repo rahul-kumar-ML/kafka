@@ -130,6 +130,8 @@ public class Sender implements Runnable {
                   short acks,
                   int retries,
                   SenderMetricsRegistry metricsRegistry,
+                  ProducerTelemetryRegistry producerTelemetryRegistry,
+                  ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry,
                   Time time,
                   int requestTimeoutMs,
                   long retryBackoffMs,
@@ -145,7 +147,7 @@ public class Sender implements Runnable {
         this.acks = acks;
         this.retries = retries;
         this.time = time;
-        this.sensors = new SenderMetrics(metricsRegistry, metadata, client, time);
+        this.sensors = new SenderMetrics(metricsRegistry, acks, producerTelemetryRegistry, producerTopicTelemetryRegistry, metadata, client, time);
         this.requestTimeoutMs = requestTimeoutMs;
         this.retryBackoffMs = retryBackoffMs;
         this.apiVersions = apiVersions;
@@ -667,7 +669,7 @@ public class Sender implements Runnable {
     private void reenqueueBatch(ProducerBatch batch, long currentTimeMs) {
         this.accumulator.reenqueue(batch, currentTimeMs);
         maybeRemoveFromInflightBatches(batch);
-        this.sensors.recordRetries(batch.topicPartition.topic(), batch.recordCount);
+        this.sensors.recordRetries(batch.topicPartition.topic(), batch.topicPartition.partition(), batch.recordCount);
     }
 
     private void completeBatch(ProducerBatch batch, ProduceResponse.PartitionResponse response) {
@@ -753,7 +755,7 @@ public class Sender implements Runnable {
             transactionManager.handleFailedBatch(batch, topLevelException, adjustSequenceNumbers);
         }
 
-        this.sensors.recordErrors(batch.topicPartition.topic(), batch.recordCount);
+        this.sensors.recordErrors(batch.topicPartition.topic(), batch.topicPartition.partition(), batch.recordCount, topLevelException);
 
         if (batch.completeExceptionally(topLevelException, recordExceptions)) {
             maybeRemoveAndDeallocateBatch(batch);
@@ -869,11 +871,24 @@ public class Sender implements Runnable {
         public final Sensor compressionRateSensor;
         public final Sensor maxRecordSizeSensor;
         public final Sensor batchSplitSensor;
+
         private final SenderMetricsRegistry metrics;
+        private final short acks;
+        private final ProducerTelemetryRegistry producerTelemetryRegistry;
+        private final ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry;
         private final Time time;
 
-        public SenderMetrics(SenderMetricsRegistry metrics, Metadata metadata, KafkaClient client, Time time) {
+        public SenderMetrics(SenderMetricsRegistry metrics,
+            short acks,
+            ProducerTelemetryRegistry producerTelemetryRegistry,
+            ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry,
+            Metadata metadata,
+            KafkaClient client,
+            Time time) {
             this.metrics = metrics;
+            this.acks = acks;
+            this.producerTelemetryRegistry = producerTelemetryRegistry;
+            this.producerTopicTelemetryRegistry = producerTopicTelemetryRegistry;
             this.time = time;
 
             this.batchSizeSensor = metrics.sensor("batch-size");
@@ -975,29 +990,36 @@ public class Sender implements Runnable {
                     Sensor topicCompressionRate = Objects.requireNonNull(this.metrics.getSensor(topicCompressionRateName));
                     topicCompressionRate.record(batch.compressionRatio());
 
+                    producerTelemetryRegistry.recordCount().record(batch.recordCount);
+                    producerTelemetryRegistry.recordBytes().record(batch.estimatedSizeInBytes());
+                    producerTopicTelemetryRegistry.recordSuccess(topic, batch.topicPartition.partition(), acks).record(batch.recordCount);
+
                     // global metrics
                     this.batchSizeSensor.record(batch.estimatedSizeInBytes(), now);
                     this.queueTimeSensor.record(batch.queueTimeMs(), now);
                     this.compressionRateSensor.record(batch.compressionRatio());
                     this.maxRecordSizeSensor.record(batch.maxRecordSize, now);
+
                     records += batch.recordCount;
                 }
                 this.recordsPerRequestSensor.record(records, now);
             }
         }
 
-        public void recordRetries(String topic, int count) {
+        public void recordRetries(String topic, int partition, int count) {
             long now = time.milliseconds();
             this.retrySensor.record(count, now);
+            producerTopicTelemetryRegistry.recordRetries(topic, partition, acks).record(count);
             String topicRetryName = "topic." + topic + ".record-retries";
             Sensor topicRetrySensor = this.metrics.getSensor(topicRetryName);
             if (topicRetrySensor != null)
                 topicRetrySensor.record(count, now);
         }
 
-        public void recordErrors(String topic, int count) {
+        public void recordErrors(String topic, int partition, int count, Throwable error) {
             long now = time.milliseconds();
             this.errorSensor.record(count, now);
+            producerTopicTelemetryRegistry.recordFailures(topic, partition, acks, String.valueOf(error)).record(count);
             String topicErrorName = "topic." + topic + ".record-errors";
             Sensor topicErrorSensor = this.metrics.getSensor(topicErrorName);
             if (topicErrorSensor != null)
