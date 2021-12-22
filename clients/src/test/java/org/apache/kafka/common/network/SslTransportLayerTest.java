@@ -552,40 +552,6 @@ public class SslTransportLayerTest {
     }
 
     /**
-     * Tests that connection succeeds with the default TLS version.
-     */
-    @Test
-    public void testTLSDefaults() throws Exception {
-        sslServerConfigs = serverCertStores.getTrustingConfig(clientCertStores);
-        sslClientConfigs = clientCertStores.getTrustingConfig(serverCertStores);
-
-        assertEquals(SslConfigs.DEFAULT_SSL_PROTOCOL, sslServerConfigs.get(SslConfigs.SSL_PROTOCOL_CONFIG));
-        assertEquals(SslConfigs.DEFAULT_SSL_PROTOCOL, sslClientConfigs.get(SslConfigs.SSL_PROTOCOL_CONFIG));
-
-        server = createEchoServer(SecurityProtocol.SSL);
-        createSelector(sslClientConfigs);
-
-        InetSocketAddress addr = new InetSocketAddress("localhost", server.port());
-        selector.connect("0", addr, BUFFER_SIZE, BUFFER_SIZE);
-
-        NetworkTestUtils.checkClientConnection(selector, "0", 10, 100);
-        server.verifyAuthenticationMetrics(1, 0);
-        selector.close();
-    }
-
-    /** Checks connection failed using the specified {@code tlsVersion}. */
-    private void checkAuthentiationFailed(String node, String tlsVersion) throws IOException {
-        sslClientConfigs.put(SslConfigs.SSL_ENABLED_PROTOCOLS_CONFIG, Arrays.asList(tlsVersion));
-        createSelector(sslClientConfigs);
-        InetSocketAddress addr = new InetSocketAddress("localhost", server.port());
-        selector.connect(node, addr, BUFFER_SIZE, BUFFER_SIZE);
-
-        NetworkTestUtils.waitForChannelClose(selector, node, ChannelState.State.AUTHENTICATION_FAILED);
-
-        selector.close();
-    }
-
-    /**
      * Tests that connections cannot be made with unsupported TLS cipher suites
      */
     @Test
