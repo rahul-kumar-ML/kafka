@@ -675,34 +675,11 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
         }
 
         try {
-            // process the record by passing to the source node of the topology
-            final ProcessorNode<Object, Object, Object, Object> currNode = (ProcessorNode<Object, Object, Object, Object>) recordInfo.node();
             final TopicPartition partition = recordInfo.partition();
 
-            log.trace("Start processing one record [{}]", record);
-
-            updateProcessorContext(
-                currNode,
-                wallClockTime,
-                new ProcessorRecordContext(
-                    record.timestamp,
-                    record.offset(),
-                    record.partition(),
-                    record.topic(),
-                    record.headers()
-                )
-            );
-
-            maybeRecordE2ELatency(record.timestamp, wallClockTime, currNode.name());
-            final Record<Object, Object> toProcess = new Record<>(
-                record.key(),
-                record.value(),
-                processorContext.timestamp(),
-                processorContext.headers()
-            );
-            maybeMeasureLatency(() -> currNode.process(toProcess), time, processLatencySensor);
-
-            log.trace("Completed processing one record [{}]", record);
+            if (!(record instanceof CorruptedRecord)) {
+                doProcess(record, wallClockTime);
+            }
 
             // update the consumed offset map after processing is done
             consumedOffsets.put(partition, record.offset());
@@ -731,6 +708,37 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
         }
 
         return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void doProcess(final StampedRecord record, final long wallClockTime) {
+        // process the record by passing to the source node of the topology
+        final ProcessorNode<Object, Object, Object, Object> currNode = (ProcessorNode<Object, Object, Object, Object>) recordInfo.node();
+
+        log.trace("Start processing one record [{}]", record);
+
+        updateProcessorContext(
+            currNode,
+            wallClockTime,
+            new ProcessorRecordContext(
+                record.timestamp,
+                record.offset(),
+                record.partition(),
+                record.topic(),
+                record.headers()
+            )
+        );
+
+        maybeRecordE2ELatency(record.timestamp, wallClockTime, currNode.name());
+        final Record<Object, Object> toProcess = new Record<>(
+            record.key(),
+            record.value(),
+            processorContext.timestamp(),
+            processorContext.headers()
+        );
+        maybeMeasureLatency(() -> currNode.process(toProcess), time, processLatencySensor);
+
+        log.trace("Completed processing one record [{}]", record);
     }
 
     @Override

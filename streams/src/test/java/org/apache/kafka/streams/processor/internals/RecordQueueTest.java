@@ -278,21 +278,25 @@ public class RecordQueueTest {
     @Test
     public void shouldNotThrowStreamsExceptionWhenKeyDeserializationFailsWithSkipHandler() {
         final byte[] key = Serdes.Long().serializer().serialize("foo", 1L);
-        final List<ConsumerRecord<byte[], byte[]>> records = Collections.singletonList(
-            new ConsumerRecord<>("topic", 1, 1, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, key, recordValue));
+        final ConsumerRecord<byte[], byte[]> record = new ConsumerRecord<>("topic", 1, 1, 0L,
+            TimestampType.CREATE_TIME, 0L, 0, 0, key, recordValue);
+        final List<ConsumerRecord<byte[], byte[]>> records = Collections.singletonList(record);
 
         queueThatSkipsDeserializeErrors.addRawRecords(records);
-        assertEquals(0, queueThatSkipsDeserializeErrors.size());
+        assertEquals(1, queueThatSkipsDeserializeErrors.size());
+        assertEquals(new CorruptedRecord(record), queueThatSkipsDeserializeErrors.poll());
     }
 
     @Test
     public void shouldNotThrowStreamsExceptionWhenValueDeserializationFailsWithSkipHandler() {
         final byte[] value = Serdes.Long().serializer().serialize("foo", 1L);
-        final List<ConsumerRecord<byte[], byte[]>> records = Collections.singletonList(
-            new ConsumerRecord<>("topic", 1, 1, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, recordKey, value));
+        final ConsumerRecord<byte[], byte[]> record = new ConsumerRecord<>("topic", 1, 1, 0L,
+            TimestampType.CREATE_TIME, 0L, 0, 0, recordKey, value);
+        final List<ConsumerRecord<byte[], byte[]>> records = Collections.singletonList(record);
 
         queueThatSkipsDeserializeErrors.addRawRecords(records);
-        assertEquals(0, queueThatSkipsDeserializeErrors.size());
+        assertEquals(1, queueThatSkipsDeserializeErrors.size());
+        assertEquals(new CorruptedRecord(record), queueThatSkipsDeserializeErrors.poll());
     }
 
     @Test
