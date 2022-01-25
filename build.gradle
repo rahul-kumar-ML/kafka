@@ -282,6 +282,7 @@ subprojects {
           url = mavenUrl
           authentication {
             awsIm(AwsImAuthentication) // Loads the AWS_* ENV Vars
+          }
         }
       }
       publications {
