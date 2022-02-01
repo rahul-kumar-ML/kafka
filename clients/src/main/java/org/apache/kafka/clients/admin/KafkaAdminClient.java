@@ -634,27 +634,6 @@ public class KafkaAdminClient extends AdminClient {
         long waitTimeMs = timeout.toMillis();
         if (waitTimeMs < 0)
             throw new IllegalArgumentException("The timeout cannot be negative.");
-
-        if (tmi != null) {
-            tmi.setState(TelemetryState.terminating);
-
-            // TODO: KIRK_TODO: figure out where/how to properly close telemetry metrics given
-            //       that we need to write out our terminal set of metrics when closing...
-            //            AtomicReference<Throwable> firstException = new AtomicReference<>();
-            //            Utils.closeQuietly(tmi, "client telemetry", firstException);
-            //            Throwable exception = firstException.get();
-            //
-            //            if (exception != null) {
-            //                if (exception instanceof InterruptException) {
-            //                    throw (InterruptException) exception;
-            //                }
-            //                throw new KafkaException("Failed to close Kafka admin client", exception);
-            //            }
-        }
-
-
-
-
         waitTimeMs = Math.min(TimeUnit.DAYS.toMillis(365), waitTimeMs); // Limit the timeout to a year.
         long now = time.milliseconds();
         long newHardShutdownTimeMs = now + waitTimeMs;

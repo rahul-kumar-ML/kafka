@@ -104,17 +104,17 @@ public class TelemetryManagementInterface implements MetricsReporter {
 
     @Override
     public void configure(Map<String, ?> configs) {
-        log.warn("configure - configs: {}", configs);
+        log.trace("configure - configs: {}", configs);
     }
 
     @Override
     public void init(List<KafkaMetric> metrics) {
-        log.warn("init - metrics: {}", metrics);
+        log.trace("init - metrics: {}", metrics);
     }
 
     @Override
     public void close() {
-        log.warn("close");
+        log.trace("close");
         setState(TelemetryState.terminating);
     }
 
@@ -135,25 +135,21 @@ public class TelemetryManagementInterface implements MetricsReporter {
 
     @Override
     public Set<String> reconfigurableConfigs() {
-        log.warn("reconfigurableConfigs");
         return MetricsReporter.super.reconfigurableConfigs();
     }
 
     @Override
     public void validateReconfiguration(Map<String, ?> configs) throws ConfigException {
-        log.warn("validateReconfiguration - configs: {}", configs);
         MetricsReporter.super.validateReconfiguration(configs);
     }
 
     @Override
     public void reconfigure(Map<String, ?> configs) {
-        log.warn("reconfigure - configs: {}", configs);
         MetricsReporter.super.reconfigure(configs);
     }
 
     @Override
     public void contextChange(MetricsContext metricsContext) {
-        log.warn("contextChange - metricsContext: {}", metricsContext);
         MetricsReporter.super.contextChange(metricsContext);
     }
 
@@ -191,33 +187,26 @@ public class TelemetryManagementInterface implements MetricsReporter {
     }
 
     public byte[] collectMetricsPayload() {
-        log.warn("collectMetricsPayload");
+        log.trace("collectMetricsPayload starting");
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
         for (KafkaMetric metric : metricsMap.values()) {
             MetricName name = metric.metricName();
             Object value = metric.metricValue();
-            log.warn("collect - name: {}, value: {}", name.name(), value);
+            log.debug("In collectMetricsPayload, including metric {} with value: {}", name.name(), value);
 
             double doubleValue = Double.parseDouble(value.toString());
-//            log.warn("collect - doubleValue: {}", doubleValue);
             long longValue = Double.valueOf(doubleValue).longValue();
-//            log.warn("collect - longValue: {}", longValue);
             Long previousValue = previousValuesMap.put(name, longValue);
             long deltaValue = previousValue != null ? longValue - previousValue : longValue;
-//            log.warn("collect - deltaValue: {}", deltaValue);
 
             NumberDataPoint numberDataPoint = NumberDataPoint.newBuilder()
                 .setAsInt(longValue)
                 .build();
 
-//            log.warn("collect - numberDataPoint: {}", numberDataPoint);
-
             Sum sum = Sum.newBuilder()
                 .addDataPoints(numberDataPoint)
                 .build();
-
-//            log.warn("collect - sum: {}", sum);
 
             Metric otlpMetric = Metric.newBuilder()
                 .setName(name.name())
@@ -225,11 +214,7 @@ public class TelemetryManagementInterface implements MetricsReporter {
                 .setSum(sum)
                 .build();
 
-//            log.warn("collect - otlpMetric: {}", otlpMetric);
-
             byte[] bytes = otlpMetric.toByteArray();
-//            log.warn("collect - bytes: {}", bytes);
-
             baos.write(bytes, 0, bytes.length);
         }
 
@@ -272,7 +257,7 @@ public class TelemetryManagementInterface implements MetricsReporter {
 
     public void setState(TelemetryState state) {
         synchronized (stateLock) {
-            log.warn("Setting state from {} to {}", this.state, state);
+            log.trace("Setting state from {} to {}", this.state, state);
             this.state = this.state.validateTransition(state);
         }
     }
@@ -307,7 +292,7 @@ public class TelemetryManagementInterface implements MetricsReporter {
             }
         }
 
-        log.warn("For state {}, returning {} for time to next update", s, t);
+        log.debug("For state {}, returning {} for time to next update", s, t);
         return t;
     }
 

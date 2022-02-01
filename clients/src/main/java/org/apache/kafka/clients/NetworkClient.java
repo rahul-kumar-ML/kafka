@@ -1324,7 +1324,6 @@ public class NetworkClient implements KafkaClient {
 
         public long maybeUpdate(long now) {
             TelemetryState state = tmi.state();
-            log.warn("maybeUpdate - {} - state: {}", clientId, state);
 
             if (state != TelemetryState.terminating) {
                 long timeToNextUpdate = tmi.timeToNextUpdate();
@@ -1332,8 +1331,8 @@ public class NetworkClient implements KafkaClient {
                     state == TelemetryState.push_in_progress;
                 long waitForFetch = inProgress ? defaultRequestTimeoutMs : 0;
                 long timeout = Math.max(timeToNextUpdate, waitForFetch);
-                log.warn("maybeUpdate - {} - timeToNextUpdate: {}, inProgress: {}, waitForFetch: {}, timeout: {}", clientId, timeToNextUpdate, inProgress, waitForFetch, timeout);
                 if (timeout > 0) {
+                    log.debug("maybeUpdate - {} - timeToNextUpdate: {}, inProgress: {}, waitForFetch: {}, timeout: {}", clientId, timeToNextUpdate, inProgress, waitForFetch, timeout);
                     return timeout;
                 }
             }
@@ -1358,6 +1357,7 @@ public class NetworkClient implements KafkaClient {
         }
 
         public void handleSuccessfulGetTelemetrySubscriptionResponse(RequestHeader requestHeader, long now, GetTelemetrySubscriptionResponse response) {
+            log.trace("Successfully received GetTelemetrySubscriptionResponse: {}", response);
             GetTelemetrySubscriptionsResponseData data = response.data();
             Set<MetricName> metricNames = TelemetryManagementInterface.metricNames(data.requestedMetrics());
             Set<CompressionType> acceptedCompressionTypes = TelemetryManagementInterface.acceptedCompressionTypes(data.acceptedCompressionTypes());
@@ -1373,13 +1373,13 @@ public class NetworkClient implements KafkaClient {
                 data.deltaTemporality(),
                 metricNames);
 
-            log.warn("Successfully retrieved telemetry subscription: {}", telemetrySubscription);
+            log.debug("Successfully retrieved telemetry subscription: {}", telemetrySubscription);
             tmi.setSubscription(telemetrySubscription);
             tmi.setState(TelemetryState.push_needed);
         }
 
         public void handleSuccessfulPushTelemetryResponse(RequestHeader requestHeader, long now, PushTelemetryResponse response) {
-            log.warn("Successfully pushed telemetry");
+            log.trace("Successfully received PushTelemetryResponse: {}", response);
             tmi.setState(TelemetryState.subscription_needed);
         }
 
