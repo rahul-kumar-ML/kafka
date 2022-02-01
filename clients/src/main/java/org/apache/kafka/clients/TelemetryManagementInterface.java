@@ -242,6 +242,8 @@ public class TelemetryManagementInterface implements MetricsReporter {
 
             subscriptionLock.notifyAll();
         }
+
+        updateLogger();
     }
 
     public TelemetrySubscription subscription() {
@@ -298,8 +300,9 @@ public class TelemetryManagementInterface implements MetricsReporter {
                     long fetchMs = subscription.fetchMs();
                     long pushIntervalMs = subscription.pushIntervalMs();
                     t = fetchMs + pushIntervalMs - milliseconds;
-                } else {
-                    // Technically, we shouldn't be able to get this far as our state check
+
+                    if (t < 0)
+                        t = 0;
                 }
             }
         }
@@ -318,7 +321,7 @@ public class TelemetryManagementInterface implements MetricsReporter {
                 clientInstanceId = "<not set>";
         }
 
-        String prefix = String.format("%s [Telemetry clientId=%s, clientInstanceId=%s] ",
+        String prefix = String.format("%s[Telemetry clientId=%s, clientInstanceId=%s] ",
             logContext.logPrefix(),
             clientId,
             clientInstanceId);

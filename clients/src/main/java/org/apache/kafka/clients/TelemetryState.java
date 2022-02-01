@@ -126,7 +126,7 @@ public enum TelemetryState {
     }
 
     private IllegalStateException fail(TelemetryState newState) {
-        return new IllegalStateException(String.format("Invalid TelemetryUpdaterState transition from %s to %s", this, newState));
+        return new IllegalStateException(String.format("Invalid transition from %s to %s", this, newState));
     }
 
 }

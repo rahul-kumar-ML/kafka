@@ -1326,7 +1326,7 @@ public class NetworkClient implements KafkaClient {
             TelemetryState state = tmi.state();
             log.warn("maybeUpdate - {} - state: {}", clientId, state);
 
-            if (tmi.subscription() != null && state != TelemetryState.terminating) {
+            if (state != TelemetryState.terminating) {
                 long timeToNextUpdate = tmi.timeToNextUpdate();
                 boolean inProgress = state == TelemetryState.subscription_in_progress ||
                     state == TelemetryState.push_in_progress;
@@ -1434,7 +1434,7 @@ public class NetworkClient implements KafkaClient {
                 return new GetTelemetrySubscriptionRequest.Builder(clientInstanceId);
             } else if (tmi.state() == TelemetryState.push_needed) {
                 if (subscription == null)
-                    throw new IllegalStateException(String.format("TelemetryUpdaterState is %s but subscription is null", state));
+                    throw new IllegalStateException(String.format("Telemetry state is %s but subscription is null", state));
 
                 boolean terminating = tmi.state() == TelemetryState.terminating;
                 byte[] bytes = tmi.collectMetricsPayload();
@@ -1450,7 +1450,7 @@ public class NetworkClient implements KafkaClient {
                     compressionType,
                     Bytes.wrap(bytes));
             } else {
-                throw new IllegalStateException(String.format("TelemetryUpdaterState is %s", tmi.state()));
+                throw new IllegalStateException(String.format("Cannot make telemetry request as telemetry is in state: %s", tmi.state()));
             }
         }
 
