@@ -3460,22 +3460,26 @@ class KafkaApis(val requestChannel: RequestChannel,
 
   // Just a place holder for now.
   def handleGetTelemetrySubscriptionRequest(request: RequestChannel.Request): Unit = {
+    // TODO: KIRK_TODO: remove this...
+    logger.warn("In handleGetTelemetrySubscriptionRequest");
     val subscriptionRequest = request.body[GetTelemetrySubscriptionRequest]
 
-    if (subscriptionRequest.getClientInstanceId == Uuid.ZERO_UUID) {
+//    if (subscriptionRequest.getClientInstanceId == Uuid.ZERO_UUID) {
       requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
         subscriptionRequest.getErrorResponse(requestThrottleMs, Errors.INVALID_REQUEST.exception))
-    }
+//    }
   }
 
   // Just a place holder for now.
   def handlePushTelemetryRequest(request: RequestChannel.Request): Unit = {
+    // TODO: KIRK_TODO: remove this...
+    logger.warn("In handlePushTelemetryRequest");
     val pushTelemetryRequest = request.body[PushTelemetryRequest]
 
-    if (pushTelemetryRequest.getClientInstanceId == Uuid.ZERO_UUID) {
+//    if (pushTelemetryRequest.getClientInstanceId == Uuid.ZERO_UUID) {
       requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
         pushTelemetryRequest.getErrorResponse(requestThrottleMs, Errors.INVALID_REQUEST.exception))
-    }
+//    }
   }
 
   private def updateRecordConversionStats(request: RequestChannel.Request,
