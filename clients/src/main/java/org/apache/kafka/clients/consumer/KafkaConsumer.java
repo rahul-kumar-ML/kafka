@@ -762,7 +762,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     apiVersions,
                     throttleTimeSensor,
                     tmi,
-                    new ClientTelemetryRegistry(metrics),
+                    new ClientTelemetryRegistry(tmi.metrics()),
                     logContext);
             this.client = new ConsumerNetworkClient(
                     logContext,

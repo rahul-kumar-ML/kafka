@@ -60,6 +60,7 @@ public class TelemetryMetricsReporter implements MetricsReporter {
 
         if (metricName.name().startsWith("org.apache.kafka")) {
             metricsMap.put(metricName, metric);
+            log.trace("metricChange - metricName: {}", metricName);
         }
     }
 
@@ -70,6 +71,7 @@ public class TelemetryMetricsReporter implements MetricsReporter {
         if (metricName.name().startsWith("org.apache.kafka")) {
             metricsMap.remove(metricName);
             deltaValueStore.remove(metricName);
+            log.trace("metricRemoval - metricName: {}", metricName);
         }
     }
 

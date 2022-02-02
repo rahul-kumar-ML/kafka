@@ -16,10 +16,8 @@
  */
 package org.apache.kafka.clients.telemetry;
 
-import java.util.Collection;
 import java.util.Map;
 import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.metrics.KafkaMetric;
 import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.utils.Bytes;
 

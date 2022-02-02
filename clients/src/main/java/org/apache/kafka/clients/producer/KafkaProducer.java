@@ -365,8 +365,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             this.metrics = new Metrics(metricConfig, reporters, time, metricsContext);
             this.producerMetrics = new KafkaProducerMetrics(metrics);
             this.tmi = new TelemetryManagementInterface(time, clientId);
-            this.producerTelemetryRegistry = new ProducerTelemetryRegistry(metrics);
-            this.producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(metrics);
+            this.producerTelemetryRegistry = new ProducerTelemetryRegistry(tmi.metrics());
+            this.producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(tmi.metrics());
             this.partitioner = config.getConfiguredInstance(
                     ProducerConfig.PARTITIONER_CLASS_CONFIG,
                     Partitioner.class,
@@ -479,7 +479,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 apiVersions,
                 throttleTimeSensor,
                 tmi,
-                new ClientTelemetryRegistry(metrics),
+                new ClientTelemetryRegistry(tmi.metrics()),
                 logContext);
         short acks = configureAcks(producerConfig, log);
         return new Sender(logContext,
