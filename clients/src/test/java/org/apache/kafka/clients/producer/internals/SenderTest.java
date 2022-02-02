@@ -23,7 +23,7 @@ import org.apache.kafka.clients.MockClient;
 import org.apache.kafka.clients.NetworkClient;
 import org.apache.kafka.clients.ClientTelemetryRegistry;
 import org.apache.kafka.clients.NodeApiVersions;
-import org.apache.kafka.clients.TelemetryManagementInterface;
+import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.Cluster;
@@ -290,7 +290,7 @@ public class SenderTest {
         Sensor throttleTimeSensor = Sender.throttleTimeSensor(this.senderMetricsRegistry);
         Cluster cluster = TestUtils.singletonCluster("test", 1);
         Node node = cluster.nodes().get(0);
-        TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, "mock", logContext);
+        TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, "mock");
         NetworkClient client = new NetworkClient(selector, metadata, "mock", Integer.MAX_VALUE,
                 1000, 1000, 64 * 1024, 64 * 1024, 1000, 10 * 1000, 127 * 1000,
                 time, true, new ApiVersions(), throttleTimeSensor, tmi, new ClientTelemetryRegistry(tmi.metrics()), logContext);

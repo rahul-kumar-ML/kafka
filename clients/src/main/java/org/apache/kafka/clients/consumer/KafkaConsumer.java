@@ -23,7 +23,7 @@ import org.apache.kafka.clients.GroupRebalanceConfig;
 import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.NetworkClient;
 import org.apache.kafka.clients.ClientTelemetryRegistry;
-import org.apache.kafka.clients.TelemetryManagementInterface;
+import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.consumer.internals.ConsumerCoordinator;
 import org.apache.kafka.clients.consumer.internals.ConsumerInterceptors;
 import org.apache.kafka.clients.consumer.internals.ConsumerMetadata;
@@ -701,7 +701,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.defaultApiTimeoutMs = config.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG);
             this.time = Time.SYSTEM;
             this.metrics = buildMetrics(config, time, clientId);
-            this.tmi = new TelemetryManagementInterface(time, clientId, logContext);
+            this.tmi = new TelemetryManagementInterface(time, clientId);
             this.retryBackoffMs = config.getLong(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG);
 
             List<ConsumerInterceptor<K, V>> interceptorList = (List) config.getConfiguredInstances(
@@ -859,7 +859,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         this.interceptors = Objects.requireNonNull(interceptors);
         this.time = time;
         this.client = client;
-        this.tmi = new TelemetryManagementInterface(time, clientId, logContext);
+        this.tmi = new TelemetryManagementInterface(time, clientId);
         this.metrics = metrics;
         this.subscriptions = subscriptions;
         this.metadata = metadata;

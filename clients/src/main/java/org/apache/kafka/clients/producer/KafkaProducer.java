@@ -22,7 +22,7 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.NetworkClient;
 import org.apache.kafka.clients.ClientTelemetryRegistry;
-import org.apache.kafka.clients.TelemetryManagementInterface;
+import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -364,7 +364,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     config.originalsWithPrefix(CommonClientConfigs.METRICS_CONTEXT_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time, metricsContext);
             this.producerMetrics = new KafkaProducerMetrics(metrics);
-            this.tmi = new TelemetryManagementInterface(time, clientId, logContext);
+            this.tmi = new TelemetryManagementInterface(time, clientId);
             this.producerTelemetryRegistry = new ProducerTelemetryRegistry(metrics);
             this.producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(metrics);
             this.partitioner = config.getConfiguredInstance(

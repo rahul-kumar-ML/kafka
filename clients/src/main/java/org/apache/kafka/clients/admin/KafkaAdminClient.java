@@ -17,7 +17,6 @@
 
 package org.apache.kafka.clients.admin;
 
-import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientRequest;
 import org.apache.kafka.clients.ClientResponse;
@@ -29,8 +28,7 @@ import org.apache.kafka.clients.HostResolver;
 import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.NetworkClient;
 import org.apache.kafka.clients.StaleMetadataException;
-import org.apache.kafka.clients.TelemetryManagementInterface;
-import org.apache.kafka.clients.TelemetryState;
+import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.admin.CreateTopicsResult.TopicMetadataAndConfig;
 import org.apache.kafka.clients.admin.DeleteAclsResult.FilterResult;
 import org.apache.kafka.clients.admin.DeleteAclsResult.FilterResults;
@@ -82,7 +80,6 @@ import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.errors.ApiException;
 import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.DisconnectException;
-import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.InvalidRequestException;
 import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.KafkaStorageException;
@@ -516,7 +513,7 @@ public class KafkaAdminClient extends AdminClient {
             channelBuilder = ClientUtils.createChannelBuilder(config, time, logContext);
             selector = new Selector(config.getLong(AdminClientConfig.CONNECTIONS_MAX_IDLE_MS_CONFIG),
                     metrics, time, metricGrpPrefix, channelBuilder, logContext);
-            TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId, logContext);
+            TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId);
             networkClient = new NetworkClient(
                 metadataManager.updater(),
                 null,
@@ -559,7 +556,7 @@ public class KafkaAdminClient extends AdminClient {
         try {
             metrics = new Metrics(new MetricConfig(), new LinkedList<>(), time);
             LogContext logContext = createLogContext(clientId);
-            TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId, logContext);
+            TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId);
             return new KafkaAdminClient(config, clientId, time, metadataManager, metrics,
                 client, null, logContext, tmi);
         } catch (Throwable exc) {

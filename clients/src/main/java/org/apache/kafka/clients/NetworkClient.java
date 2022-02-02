@@ -21,6 +21,11 @@ import static org.apache.kafka.common.Uuid.ZERO_UUID;
 import java.util.Set;
 import org.apache.kafka.clients.ClientTelemetryRegistry.ConnectionErrorReason;
 import org.apache.kafka.clients.ClientTelemetryRegistry.RequestErrorReason;
+import org.apache.kafka.clients.telemetry.IllegalTelemetryStateException;
+import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
+import org.apache.kafka.clients.telemetry.TelemetryState;
+import org.apache.kafka.clients.telemetry.TelemetrySubscription;
+import org.apache.kafka.clients.telemetry.TelemetryUtils;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.MetricName;
@@ -696,10 +701,6 @@ public class NetworkClient implements KafkaClient {
      */
     @Override
     public void close() {
-        if (tmi != null) {
-
-        }
-
         state.compareAndSet(State.ACTIVE, State.CLOSING);
         if (state.compareAndSet(State.CLOSING, State.CLOSED)) {
             this.selector.close();
@@ -1325,16 +1326,18 @@ public class NetworkClient implements KafkaClient {
         public long maybeUpdate(long now) {
             TelemetryState state = tmi.state();
 
-            if (state != TelemetryState.terminating) {
-                long timeToNextUpdate = tmi.timeToNextUpdate();
-                boolean inProgress = state == TelemetryState.subscription_in_progress ||
-                    state == TelemetryState.push_in_progress;
-                long waitForFetch = inProgress ? defaultRequestTimeoutMs : 0;
-                long timeout = Math.max(timeToNextUpdate, waitForFetch);
-                if (timeout > 0) {
-                    log.debug("maybeUpdate - {} - timeToNextUpdate: {}, inProgress: {}, waitForFetch: {}, timeout: {}", clientId, timeToNextUpdate, inProgress, waitForFetch, timeout);
-                    return timeout;
-                }
+            if (state == TelemetryState.terminated) {
+                log.debug("Ignoring attempt to determine telemetry update once terminated");
+                return Long.MAX_VALUE;
+            }
+
+            long timeToNextUpdate = tmi.timeToNextUpdate();
+            boolean inProgress = state.isNetworkState();
+            long waitForFetch = inProgress ? defaultRequestTimeoutMs : 0;
+            long timeout = Math.max(timeToNextUpdate, waitForFetch);
+            if (timeout > 0) {
+                log.debug("maybeUpdate - {} - timeToNextUpdate: {}, inProgress: {}, waitForFetch: {}, timeout: {}", clientId, timeToNextUpdate, inProgress, waitForFetch, timeout);
+                return timeout;
             }
 
             Node node = leastLoadedNode(now);
@@ -1353,15 +1356,23 @@ public class NetworkClient implements KafkaClient {
 
         public void handleFailedPushTelemetryRequest(long now, Optional<KafkaException> maybeFatalException) {
             log.warn("Failed to push telemetry", maybeFatalException.orElse(null));
-            tmi.setState(TelemetryState.subscription_needed);
+
+            TelemetryState state = tmi.state();
+
+            if (state == TelemetryState.push_in_progress)
+                tmi.setState(TelemetryState.subscription_needed);
+            else if (state == TelemetryState.terminating_push_in_progress)
+                tmi.setState(TelemetryState.terminated);
+            else
+                throw new IllegalTelemetryStateException(String.format("Could not transition state after failed push telemetry from state %s", state));
         }
 
         public void handleSuccessfulGetTelemetrySubscriptionResponse(RequestHeader requestHeader, long now, GetTelemetrySubscriptionResponse response) {
             log.trace("Successfully received GetTelemetrySubscriptionResponse: {}", response);
             GetTelemetrySubscriptionsResponseData data = response.data();
-            Set<MetricName> metricNames = TelemetryManagementInterface.metricNames(data.requestedMetrics());
-            Set<CompressionType> acceptedCompressionTypes = TelemetryManagementInterface.acceptedCompressionTypes(data.acceptedCompressionTypes());
-            Uuid clientInstanceId = TelemetryManagementInterface.clientInstanceId(data.clientInstanceId());
+            Set<MetricName> metricNames = TelemetryUtils.metricNames(data.requestedMetrics());
+            Set<CompressionType> acceptedCompressionTypes = TelemetryUtils.acceptedCompressionTypes(data.acceptedCompressionTypes());
+            Uuid clientInstanceId = TelemetryUtils.clientInstanceId(data.clientInstanceId());
             int pushIntervalMs = data.pushIntervalMs() > 0 ? data.pushIntervalMs() : 10000;
 
             TelemetrySubscription telemetrySubscription = new TelemetrySubscription(time.milliseconds(),
@@ -1380,10 +1391,15 @@ public class NetworkClient implements KafkaClient {
 
         public void handleSuccessfulPushTelemetryResponse(RequestHeader requestHeader, long now, PushTelemetryResponse response) {
             log.trace("Successfully received PushTelemetryResponse: {}", response);
-            tmi.setState(TelemetryState.subscription_needed);
-        }
 
-        public void close() {
+            TelemetryState state = tmi.state();
+
+            if (state == TelemetryState.push_in_progress)
+                tmi.setState(TelemetryState.subscription_needed);
+            else if (state == TelemetryState.terminating_push_in_progress)
+                tmi.setState(TelemetryState.terminated);
+            else
+                throw new IllegalTelemetryStateException(String.format("Could not transition state after successful push telemetry from state %s", state));
         }
 
         private long maybeUpdate(long now, Node node) {
@@ -1391,14 +1407,6 @@ public class NetworkClient implements KafkaClient {
 
             if (canSendRequest(nodeConnectionId, now)) {
                 AbstractRequest.Builder<?> request = createRequest();
-
-                if (request instanceof GetTelemetrySubscriptionRequest.Builder)
-                    tmi.setState(TelemetryState.subscription_in_progress);
-                else if (request instanceof PushTelemetryRequest.Builder)
-                    tmi.setState(TelemetryState.push_in_progress);
-                else
-                    throw new IllegalStateException("Unexpected request type: " + request.getClass().getName());
-
                 ClientRequest clientRequest = newClientRequest(nodeConnectionId, request, now, true);
                 doSend(clientRequest, true, now);
                 return defaultRequestTimeoutMs;
@@ -1431,24 +1439,30 @@ public class NetworkClient implements KafkaClient {
             Uuid clientInstanceId = subscription != null ? subscription.clientInstanceId() : ZERO_UUID;
 
             if (tmi.state() == TelemetryState.subscription_needed) {
+                tmi.setState(TelemetryState.subscription_in_progress);
                 return new GetTelemetrySubscriptionRequest.Builder(clientInstanceId);
             } else if (tmi.state() == TelemetryState.push_needed) {
                 if (subscription == null)
                     throw new IllegalStateException(String.format("Telemetry state is %s but subscription is null", state));
 
                 boolean terminating = tmi.state() == TelemetryState.terminating;
-                byte[] bytes = tmi.collectMetricsPayload();
                 CompressionType compressionType = CompressionType.NONE;
+                Bytes bytes = tmi.collectMetricsPayload(compressionType, subscription.deltaTemporality());
 
                 if (compressionType != CompressionType.NONE) {
                     // TODO: KIRK_TODO
                 }
 
+                if (terminating)
+                    tmi.setState(TelemetryState.terminating_push_in_progress);
+                else
+                    tmi.setState(TelemetryState.push_in_progress);
+
                 return new PushTelemetryRequest.Builder(subscription.clientInstanceId(),
                     subscription.subscriptionId(),
                     terminating,
                     compressionType,
-                    Bytes.wrap(bytes));
+                    bytes);
             } else {
                 throw new IllegalStateException(String.format("Cannot make telemetry request as telemetry is in state: %s", tmi.state()));
             }

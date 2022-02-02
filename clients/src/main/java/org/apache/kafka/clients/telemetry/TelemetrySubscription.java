@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.kafka.clients;
+package org.apache.kafka.clients.telemetry;
 
 import java.util.Set;
 import java.util.StringJoiner;
