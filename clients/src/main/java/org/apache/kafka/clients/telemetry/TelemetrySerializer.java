@@ -16,13 +16,13 @@
  */
 package org.apache.kafka.clients.telemetry;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Map;
 import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.record.CompressionType;
-import org.apache.kafka.common.utils.Bytes;
 
 public interface TelemetrySerializer {
 
-    Bytes serialize(Map<MetricName, Long> values, CompressionType compressionType);
+    void serialize(Map<MetricName, Long> values, OutputStream out) throws IOException;
 
 }

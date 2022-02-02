@@ -1446,11 +1446,14 @@ public class NetworkClient implements KafkaClient {
                     throw new IllegalStateException(String.format("Telemetry state is %s but subscription is null", state));
 
                 boolean terminating = tmi.state() == TelemetryState.terminating;
-                CompressionType compressionType = CompressionType.NONE;
-                Bytes bytes = tmi.collectMetricsPayload(compressionType, subscription.deltaTemporality());
+                CompressionType compressionType = CompressionType.LZ4;
+                Bytes bytes;
 
-                if (compressionType != CompressionType.NONE) {
-                    // TODO: KIRK_TODO
+                try {
+                    bytes = tmi.collectMetricsPayload(compressionType, subscription.deltaTemporality());
+                } catch (IOException e) {
+                    // TODO: KIRK_TODO: not sure what to do here.
+                    throw new KafkaException("Couldn't serialize telemetry");
                 }
 
                 if (terminating)

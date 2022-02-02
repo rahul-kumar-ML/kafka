@@ -17,6 +17,7 @@
 package org.apache.kafka.clients.telemetry;
 
 import java.io.Closeable;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -98,7 +99,9 @@ public class TelemetryManagementInterface implements Closeable {
         setState(TelemetryState.terminating);
     }
 
-    public Bytes collectMetricsPayload(CompressionType compressionType, boolean deltaTemporality) {
+    public Bytes collectMetricsPayload(CompressionType compressionType,
+        boolean deltaTemporality)
+    throws IOException {
         log.trace("collectMetricsPayload starting");
         Collection<KafkaMetric> metrics = telemetryMetricsReporter.current();
         Map<MetricName, Long> values = new HashMap<>();
@@ -110,7 +113,7 @@ public class TelemetryManagementInterface implements Closeable {
             values.put(name, value);
         }
 
-        return telemetrySerializer.serialize(values, compressionType);
+        return TelemetryUtils.serialize(values, compressionType, telemetrySerializer);
     }
 
     public void setSubscription(TelemetrySubscription subscription) {

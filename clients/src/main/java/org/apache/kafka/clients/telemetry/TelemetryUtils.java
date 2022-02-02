@@ -16,17 +16,27 @@
  */
 package org.apache.kafka.clients.telemetry;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.metrics.KafkaMetric;
 import org.apache.kafka.common.metrics.stats.CumulativeSum;
 import org.apache.kafka.common.record.CompressionType;
+import org.apache.kafka.common.record.RecordBatch;
+import org.apache.kafka.common.utils.ByteBufferOutputStream;
+import org.apache.kafka.common.utils.Bytes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TelemetryUtils {
+
+    private static final Logger log = LoggerFactory.getLogger(TelemetryUtils.class);
 
     public static Set<MetricName> metricNames(List<String> requestedMetrics) {
         Set<MetricName> set;
@@ -46,13 +56,28 @@ public class TelemetryUtils {
     }
 
     public static Set<CompressionType> acceptedCompressionTypes(List<Byte> acceptedCompressionTypes) {
-        Set<CompressionType> set;
+        Set<CompressionType> set = null;
 
-        if (acceptedCompressionTypes == null || acceptedCompressionTypes.isEmpty()) {
-            set = Collections.emptySet();
-        } else {
+        if (acceptedCompressionTypes != null && !acceptedCompressionTypes.isEmpty()) {
             set = new HashSet<>();
+
+            for (Byte b : acceptedCompressionTypes) {
+                // TODO: KIRK_TRUE log error and ignore
+                int compressionId = b.intValue();
+
+                try {
+                    CompressionType compressionType = CompressionType.forId(compressionId);
+                    set.add(compressionType);
+                } catch (IllegalArgumentException e) {
+                    log.warn("Accepted compression type with ID {} provided by broker is not a known compression type; ignoring", compressionId);
+                }
+            }
         }
+
+        // If the set of accepted compression types provided by the server was empty or had
+        // nothing in it, let's add the no-op compression type.
+        if (set == null || set.isEmpty())
+            set = Collections.singleton(CompressionType.NONE);
 
         return set;
     }
@@ -76,6 +101,19 @@ public class TelemetryUtils {
         }
 
         return longValue;
+    }
+
+    public static Bytes serialize(Map<MetricName, Long> values,
+        CompressionType compressionType,
+        TelemetrySerializer telemetrySerializer)
+    throws IOException {
+        ByteBufferOutputStream bbos = new ByteBufferOutputStream(1024);
+
+        try (OutputStream os = compressionType.wrapForOutput(bbos, RecordBatch.CURRENT_MAGIC_VALUE)) {
+            telemetrySerializer.serialize(values, os);
+        }
+
+        return Bytes.wrap(bbos.buffer().array());
     }
 
 }

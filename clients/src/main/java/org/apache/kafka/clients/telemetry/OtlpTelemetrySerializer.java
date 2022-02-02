@@ -19,17 +19,14 @@ package org.apache.kafka.clients.telemetry;
 import io.opentelemetry.proto.metrics.v1.Metric;
 import io.opentelemetry.proto.metrics.v1.NumberDataPoint;
 import io.opentelemetry.proto.metrics.v1.Sum;
-import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Map;
 import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.record.CompressionType;
-import org.apache.kafka.common.utils.Bytes;
 
 public class OtlpTelemetrySerializer implements TelemetrySerializer {
 
-    public Bytes serialize(Map<MetricName, Long> values, CompressionType compressionType) {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-
+    public void serialize(Map<MetricName, Long> values, OutputStream out) throws IOException {
         for (Map.Entry<MetricName, Long> entry : values.entrySet()) {
             MetricName name = entry.getKey();
             Long value = entry.getValue();
@@ -49,10 +46,8 @@ public class OtlpTelemetrySerializer implements TelemetrySerializer {
                 .build();
 
             byte[] oltpBytes = otlpMetric.toByteArray();
-            baos.write(oltpBytes, 0, oltpBytes.length);
+            out.write(oltpBytes, 0, oltpBytes.length);
         }
-
-        return Bytes.wrap(baos.toByteArray());
     }
 
 }
