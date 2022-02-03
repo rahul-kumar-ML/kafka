@@ -18,6 +18,7 @@ package org.apache.kafka.clients.telemetry;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -31,6 +32,7 @@ import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.record.RecordBatch;
 import org.apache.kafka.common.utils.ByteBufferOutputStream;
 import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -107,13 +109,25 @@ public class TelemetryUtils {
         CompressionType compressionType,
         TelemetrySerializer telemetrySerializer)
     throws IOException {
-        ByteBufferOutputStream bbos = new ByteBufferOutputStream(1024);
+        ByteBufferOutputStream bbos = null;
 
-        try (OutputStream os = compressionType.wrapForOutput(bbos, RecordBatch.CURRENT_MAGIC_VALUE)) {
-            telemetrySerializer.serialize(values, os);
+        try {
+            bbos = new ByteBufferOutputStream(1024);
+
+            try (OutputStream os = compressionType.wrapForOutput(bbos, RecordBatch.CURRENT_MAGIC_VALUE)) {
+                telemetrySerializer.serialize(values, os);
+                os.flush();
+            }
+        } finally {
+            if (bbos != null) {
+                bbos.flush();
+                bbos.close();
+            }
         }
 
-        return Bytes.wrap(bbos.buffer().array());
+        ByteBuffer buffer = bbos.buffer();
+        byte[] bytes = Utils.readBytes(buffer);
+        return Bytes.wrap(bytes);
     }
 
 }
