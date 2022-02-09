@@ -32,7 +32,7 @@ public enum TelemetryState {
         return
             this == subscription_in_progress ||
                 this == push_in_progress ||
-                this== terminating_push_in_progress;
+                this == terminating_push_in_progress;
     }
 
     public TelemetryState validateTransition(TelemetryState newState) {

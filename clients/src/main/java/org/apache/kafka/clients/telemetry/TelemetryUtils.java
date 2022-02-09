@@ -19,20 +19,22 @@ package org.apache.kafka.clients.telemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.Uuid;
+import org.apache.kafka.common.metrics.Gauge;
 import org.apache.kafka.common.metrics.KafkaMetric;
+import org.apache.kafka.common.metrics.Measurable;
 import org.apache.kafka.common.metrics.stats.CumulativeSum;
+import org.apache.kafka.common.metrics.stats.Histogram;
 import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.record.RecordBatch;
 import org.apache.kafka.common.utils.ByteBufferOutputStream;
-import org.apache.kafka.common.utils.Bytes;
-import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,19 +59,18 @@ public class TelemetryUtils {
         return set;
     }
 
-    public static Set<CompressionType> acceptedCompressionTypes(List<Byte> acceptedCompressionTypes) {
-        Set<CompressionType> set = null;
+    public static List<CompressionType> acceptedCompressionTypes(List<Byte> acceptedCompressionTypes) {
+        List<CompressionType> list = null;
 
         if (acceptedCompressionTypes != null && !acceptedCompressionTypes.isEmpty()) {
-            set = new HashSet<>();
+            list = new ArrayList<>();
 
             for (Byte b : acceptedCompressionTypes) {
-                // TODO: KIRK_TRUE log error and ignore
                 int compressionId = b.intValue();
 
                 try {
                     CompressionType compressionType = CompressionType.forId(compressionId);
-                    set.add(compressionType);
+                    list.add(compressionType);
                 } catch (IllegalArgumentException e) {
                     log.warn("Accepted compression type with ID {} provided by broker is not a known compression type; ignoring", compressionId);
                 }
@@ -77,57 +78,44 @@ public class TelemetryUtils {
         }
 
         // If the set of accepted compression types provided by the server was empty or had
-        // nothing in it, let's add the no-op compression type.
-        if (set == null || set.isEmpty())
-            set = Collections.singleton(CompressionType.NONE);
+        // nothing valid in it, let's just return a non-null list, and we'll just end up using
+        // no compression.
+        if (list == null || list.isEmpty())
+            list = Collections.emptyList();
 
-        return set;
+        return list;
     }
 
     public static Uuid clientInstanceId(Uuid clientInstanceId) {
         return clientInstanceId.equals(Uuid.ZERO_UUID) ? Uuid.randomUuid() : clientInstanceId;
     }
 
-    public static long metricValue(KafkaMetric metric,
-        boolean deltaTemporality,
-        DeltaValueStore deltaValueStore) {
-        MetricName name = metric.metricName();
-        Object value = metric.metricValue();
+    public static MetricType metricType(KafkaMetric kafkaMetric) {
+        Measurable measurable = kafkaMetric.measurable();
 
-        double doubleValue = Double.parseDouble(value.toString());
-        long longValue = Double.valueOf(doubleValue).longValue();
-
-        if (metric.measurable() instanceof CumulativeSum && deltaTemporality) {
-            Long previousValue = deltaValueStore.getAndSet(name, longValue);
-            longValue = previousValue != null ? longValue - previousValue : longValue;
+        if (measurable instanceof Gauge) {
+            return MetricType.gauge;
+        } else if (measurable instanceof Histogram) {
+            return MetricType.histogram;
+        } else if (measurable instanceof CumulativeSum) {
+            return MetricType.sum;
+        } else {
+            // TODO: KIRK_TODO: make message
+            throw new InvalidMetricTypeException();
         }
-
-        return longValue;
     }
 
-    public static Bytes serialize(Map<MetricName, Long> values,
+    public static ByteBuffer serialize(Collection<TelemetryMetric> telemetryMetrics,
         CompressionType compressionType,
         TelemetrySerializer telemetrySerializer)
-    throws IOException {
-        ByteBufferOutputStream bbos = null;
-
-        try {
-            bbos = new ByteBufferOutputStream(1024);
-
-            try (OutputStream os = compressionType.wrapForOutput(bbos, RecordBatch.CURRENT_MAGIC_VALUE)) {
-                telemetrySerializer.serialize(values, os);
-                os.flush();
+        throws IOException {
+        try (ByteBufferOutputStream compressedOut = new ByteBufferOutputStream(1024)) {
+            try (OutputStream out = compressionType.wrapForOutput(compressedOut, RecordBatch.CURRENT_MAGIC_VALUE)) {
+                telemetrySerializer.serialize(telemetryMetrics, out);
             }
-        } finally {
-            if (bbos != null) {
-                bbos.flush();
-                bbos.close();
-            }
+
+            return (ByteBuffer) compressedOut.buffer().flip();
         }
-
-        ByteBuffer buffer = bbos.buffer();
-        byte[] bytes = Utils.readBytes(buffer);
-        return Bytes.wrap(bytes);
     }
 
 }

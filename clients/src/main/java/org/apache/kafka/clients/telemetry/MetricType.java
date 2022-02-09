@@ -16,13 +16,8 @@
  */
 package org.apache.kafka.clients.telemetry;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.util.Collection;
+public enum MetricType {
 
-public interface TelemetrySerializer {
-
-    void serialize(Collection<TelemetryMetric> telemetryMetrics, OutputStream out)
-        throws IOException;
+    gauge, histogram, sum
 
 }

@@ -17,7 +17,7 @@
 package org.apache.kafka.clients.producer.internals;
 
 import java.util.Set;
-import org.apache.kafka.clients.AbstractClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.AbstractClientTelemetryRegistry;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.metrics.Metrics;

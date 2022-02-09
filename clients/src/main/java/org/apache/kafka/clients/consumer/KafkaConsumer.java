@@ -22,7 +22,7 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.GroupRebalanceConfig;
 import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.NetworkClient;
-import org.apache.kafka.clients.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.consumer.internals.ConsumerCoordinator;
 import org.apache.kafka.clients.consumer.internals.ConsumerInterceptors;

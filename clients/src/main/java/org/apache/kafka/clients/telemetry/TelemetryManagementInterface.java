@@ -18,19 +18,19 @@ package org.apache.kafka.clients.telemetry;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
-import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.metrics.KafkaMetric;
+import java.util.stream.Collectors;
 import org.apache.kafka.common.metrics.KafkaMetricsContext;
+import org.apache.kafka.common.metrics.Measurable;
 import org.apache.kafka.common.metrics.MetricConfig;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.MetricsContext;
+import org.apache.kafka.common.metrics.stats.CumulativeSum;
 import org.apache.kafka.common.record.CompressionType;
-import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,9 +66,9 @@ public class TelemetryManagementInterface implements Closeable {
     public TelemetryManagementInterface(Time time, String clientId) {
         this.time = time;
         this.clientId = clientId;
+        this.telemetrySerializer = new OtlpTelemetrySerializer();
         this.deltaValueStore = new DeltaValueStore();
         this.telemetryMetricsReporter = new TelemetryMetricsReporter(deltaValueStore);
-        this.telemetrySerializer = new OtlpTelemetrySerializer();
 
         Map<String, String> metricsTags = Collections.singletonMap(CLIENT_ID_METRIC_TAG, clientId);
         MetricConfig metricConfig = new MetricConfig()
@@ -99,21 +99,33 @@ public class TelemetryManagementInterface implements Closeable {
         setState(TelemetryState.terminating);
     }
 
-    public Bytes collectMetricsPayload(CompressionType compressionType,
-        boolean deltaTemporality)
-    throws IOException {
+    public ByteBuffer collectMetricsPayload(CompressionType compressionType, boolean deltaTemporality) throws IOException {
         log.trace("collectMetricsPayload starting");
-        Collection<KafkaMetric> metrics = telemetryMetricsReporter.current();
-        Map<MetricName, Long> values = new HashMap<>();
+        Collection<TelemetryMetric> telemetryMetrics = telemetryMetricsReporter.current().stream().map(kafkaMetric -> {
+            String name = kafkaMetric.metricName().name();
+            long value;
 
-        for (KafkaMetric metric : metrics) {
-            MetricName name = metric.metricName();
-            long value = TelemetryUtils.metricValue(metric, deltaTemporality, deltaValueStore);
-            log.debug("Including metric {} with value: {}", name.name(), value);
-            values.put(name, value);
-        }
+            {
+                Object metricValue = kafkaMetric.metricValue();
+                double doubleValue = Double.parseDouble(metricValue.toString());
+                value = Double.valueOf(doubleValue).longValue();
+                Measurable measurable = kafkaMetric.measurable();
 
-        return TelemetryUtils.serialize(values, compressionType, telemetrySerializer);
+                if (measurable instanceof CumulativeSum && deltaTemporality) {
+                    Long previousValue = deltaValueStore.getAndSet(kafkaMetric.metricName(), value);
+                    value = previousValue != null ? value - previousValue : value;
+                }
+            }
+
+            MetricType metricType = TelemetryUtils.metricType(kafkaMetric);
+            String description = kafkaMetric.metricName().description();
+
+            TelemetryMetric telemetryMetric = new TelemetryMetric(name, metricType, value, description);
+            log.debug("Including telemetry metric: {}", telemetryMetric);
+            return telemetryMetric;
+        }).collect(Collectors.toList());
+
+        return TelemetryUtils.serialize(telemetryMetrics, compressionType, telemetrySerializer);
     }
 
     public void setSubscription(TelemetrySubscription subscription) {

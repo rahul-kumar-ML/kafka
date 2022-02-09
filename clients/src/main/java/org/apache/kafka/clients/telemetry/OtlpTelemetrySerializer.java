@@ -16,38 +16,69 @@
  */
 package org.apache.kafka.clients.telemetry;
 
+import io.opentelemetry.proto.metrics.v1.Gauge;
+import io.opentelemetry.proto.metrics.v1.Histogram;
+import io.opentelemetry.proto.metrics.v1.InstrumentationLibraryMetrics;
 import io.opentelemetry.proto.metrics.v1.Metric;
 import io.opentelemetry.proto.metrics.v1.NumberDataPoint;
+import io.opentelemetry.proto.metrics.v1.ResourceMetrics;
 import io.opentelemetry.proto.metrics.v1.Sum;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Map;
-import org.apache.kafka.common.MetricName;
+import java.util.Collection;
 
 public class OtlpTelemetrySerializer implements TelemetrySerializer {
 
-    public void serialize(Map<MetricName, Long> values, OutputStream out) throws IOException {
-        for (Map.Entry<MetricName, Long> entry : values.entrySet()) {
-            MetricName name = entry.getKey();
-            Long value = entry.getValue();
+    @Override
+    public void serialize(Collection<TelemetryMetric> telemetryMetrics, OutputStream out)
+        throws IOException {
+        InstrumentationLibraryMetrics.Builder instrumentationLibraryMetrics = InstrumentationLibraryMetrics.newBuilder();
 
+        for (TelemetryMetric telemetryMetric : telemetryMetrics) {
             NumberDataPoint numberDataPoint = NumberDataPoint.newBuilder()
-                .setAsInt(value)
+                .setAsInt(telemetryMetric.value())
                 .build();
 
-            Sum sum = Sum.newBuilder()
-                .addDataPoints(numberDataPoint)
-                .build();
+            Metric.Builder builder = Metric.newBuilder()
+                .setName(telemetryMetric.name())
+                .setDescription(telemetryMetric.description());
 
-            Metric otlpMetric = Metric.newBuilder()
-                .setName(name.name())
-                .setDescription(name.description())
-                .setSum(sum)
-                .build();
+            switch (telemetryMetric.metricType()) {
+                case gauge:
+                    Gauge gauge = Gauge.newBuilder()
+                        .addDataPoints(numberDataPoint)
+                        .build();
+                    builder.setGauge(gauge);
 
-            byte[] oltpBytes = otlpMetric.toByteArray();
-            out.write(oltpBytes, 0, oltpBytes.length);
+                    break;
+
+                case histogram:
+                    // TODO: KIRK_TRUE - we should figure out histograms at some point.
+                    Histogram histogram = Histogram.newBuilder()
+                        .build();
+                    builder.setHistogram(histogram);
+
+                    break;
+
+                case sum:
+                    Sum sum = Sum.newBuilder()
+                        .addDataPoints(numberDataPoint)
+                        .build();
+                    builder.setSum(sum);
+
+                    break;
+
+                default:
+                    throw new InvalidMetricTypeException("");
+            }
+
+            Metric metric = builder.build();
+            instrumentationLibraryMetrics.addMetrics(metric);
         }
+
+        ResourceMetrics.Builder resourceMetrics = ResourceMetrics.newBuilder();
+        resourceMetrics.addInstrumentationLibraryMetrics(instrumentationLibraryMetrics.build());
+        resourceMetrics.build().writeTo(out);
     }
 
 }

@@ -16,13 +16,22 @@
  */
 package org.apache.kafka.clients.telemetry;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.util.Collection;
+import org.apache.kafka.common.KafkaException;
 
-public interface TelemetrySerializer {
+public class InvalidMetricTypeException extends KafkaException {
 
-    void serialize(Collection<TelemetryMetric> telemetryMetrics, OutputStream out)
-        throws IOException;
+    public InvalidMetricTypeException(final String message, final Throwable cause) {
+        super(message, cause);
+    }
 
+    public InvalidMetricTypeException(final String message) {
+        super(message);
+    }
+
+    public InvalidMetricTypeException(final Throwable cause) {
+        super(cause);
+    }
+
+    public InvalidMetricTypeException() {
+    }
 }

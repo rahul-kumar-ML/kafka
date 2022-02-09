@@ -14,9 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.kafka.clients.telemetry;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.StringJoiner;
 import org.apache.kafka.common.MetricName;
@@ -29,7 +30,7 @@ public class TelemetrySubscription {
     private final long throttleTimeMs;
     private final Uuid clientInstanceId;
     private final int subscriptionId;
-    private final Set<CompressionType> acceptedCompressionTypes;
+    private final List<CompressionType> acceptedCompressionTypes;
     private final long pushIntervalMs;
     private final boolean deltaTemporality;
     private final Set<MetricName> metricNames;
@@ -38,7 +39,7 @@ public class TelemetrySubscription {
         long throttleTimeMs,
         Uuid clientInstanceId,
         int subscriptionId,
-        Set<CompressionType> acceptedCompressionTypes,
+        List<CompressionType> acceptedCompressionTypes,
         long pushIntervalMs,
         boolean deltaTemporality,
         Set<MetricName> metricNames) {
@@ -46,7 +47,7 @@ public class TelemetrySubscription {
         this.throttleTimeMs = throttleTimeMs;
         this.clientInstanceId = clientInstanceId;
         this.subscriptionId = subscriptionId;
-        this.acceptedCompressionTypes = acceptedCompressionTypes;
+        this.acceptedCompressionTypes = Collections.unmodifiableList(acceptedCompressionTypes);
         this.pushIntervalMs = pushIntervalMs;
         this.deltaTemporality = deltaTemporality;
         this.metricNames = metricNames;
@@ -68,7 +69,7 @@ public class TelemetrySubscription {
         return subscriptionId;
     }
 
-    public Set<CompressionType> acceptedCompressionTypes() {
+    public List<CompressionType> acceptedCompressionTypes() {
         return acceptedCompressionTypes;
     }
 

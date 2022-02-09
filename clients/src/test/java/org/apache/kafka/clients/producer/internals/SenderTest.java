@@ -21,7 +21,7 @@ import org.apache.kafka.clients.ClientRequest;
 import org.apache.kafka.clients.ClientResponse;
 import org.apache.kafka.clients.MockClient;
 import org.apache.kafka.clients.NetworkClient;
-import org.apache.kafka.clients.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
 import org.apache.kafka.clients.NodeApiVersions;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.producer.Callback;

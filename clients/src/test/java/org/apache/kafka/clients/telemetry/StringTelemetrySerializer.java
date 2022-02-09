@@ -18,19 +18,16 @@ package org.apache.kafka.clients.telemetry;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Map;
-import org.apache.kafka.common.MetricName;
+import java.util.Collection;
 
 public class StringTelemetrySerializer implements TelemetrySerializer {
 
-    public void serialize(Map<MetricName, Long> values, OutputStream out) throws IOException {
-        for (Map.Entry<MetricName, Long> entry : values.entrySet()) {
-            MetricName name = entry.getKey();
-            Long value = entry.getValue();
-            String s = String.format("%s: %s%s", name, value, System.lineSeparator());
+    @Override
+    public void serialize(Collection<TelemetryMetric> telemetryMetrics, OutputStream out) throws IOException {
+        for (TelemetryMetric telemetryMetric : telemetryMetrics) {
+            String s = String.format("%s: %s%s", telemetryMetric.name(), telemetryMetric.value(), System.lineSeparator());
             byte[] bytes = s.getBytes();
             out.write(bytes, 0, bytes.length);
         }
     }
-
 }

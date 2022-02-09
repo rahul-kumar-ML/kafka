@@ -19,8 +19,9 @@ package org.apache.kafka.clients;
 import static org.apache.kafka.common.Uuid.ZERO_UUID;
 
 import java.util.Set;
-import org.apache.kafka.clients.ClientTelemetryRegistry.ConnectionErrorReason;
-import org.apache.kafka.clients.ClientTelemetryRegistry.RequestErrorReason;
+import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry.ConnectionErrorReason;
+import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry.RequestErrorReason;
 import org.apache.kafka.clients.telemetry.IllegalTelemetryStateException;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.telemetry.TelemetryState;
@@ -1080,7 +1081,10 @@ public class NetworkClient implements KafkaClient {
 
             // TODO: KIRK_TODO: there's no way this mapping is correct...
             switch (errors) {
-                case NETWORK_EXCEPTION: reason = ConnectionErrorReason.disconnect; break;
+                case NETWORK_EXCEPTION:
+                    reason = ConnectionErrorReason.disconnect;
+                    break;
+
                 case CLUSTER_AUTHORIZATION_FAILED:
                 case DELEGATION_TOKEN_AUTHORIZATION_FAILED:
                 case DELEGATION_TOKEN_AUTH_DISABLED:
@@ -1088,9 +1092,12 @@ public class NetworkClient implements KafkaClient {
                 case SASL_AUTHENTICATION_FAILED:
                 case TOPIC_AUTHORIZATION_FAILED:
                 case TRANSACTIONAL_ID_AUTHORIZATION_FAILED:
-                    reason = ConnectionErrorReason.auth; break;
+                    reason = ConnectionErrorReason.auth;
+                    break;
+
                 case REQUEST_TIMED_OUT:
-                    reason = ConnectionErrorReason.timeout; break;
+                    reason = ConnectionErrorReason.timeout;
+                    break;
             }
 
             if (reason != null)
@@ -1371,7 +1378,7 @@ public class NetworkClient implements KafkaClient {
             log.trace("Successfully received GetTelemetrySubscriptionResponse: {}", response);
             GetTelemetrySubscriptionsResponseData data = response.data();
             Set<MetricName> metricNames = TelemetryUtils.metricNames(data.requestedMetrics());
-            Set<CompressionType> acceptedCompressionTypes = TelemetryUtils.acceptedCompressionTypes(data.acceptedCompressionTypes());
+            List<CompressionType> acceptedCompressionTypes = TelemetryUtils.acceptedCompressionTypes(data.acceptedCompressionTypes());
             Uuid clientInstanceId = TelemetryUtils.clientInstanceId(data.clientInstanceId());
             int pushIntervalMs = data.pushIntervalMs() > 0 ? data.pushIntervalMs() : 10000;
 
@@ -1450,7 +1457,8 @@ public class NetworkClient implements KafkaClient {
                 Bytes bytes;
 
                 try {
-                    bytes = tmi.collectMetricsPayload(compressionType, subscription.deltaTemporality());
+                    ByteBuffer buf = tmi.collectMetricsPayload(compressionType, subscription.deltaTemporality());
+                    bytes = Bytes.wrap(Utils.readBytes(buf));
                 } catch (IOException e) {
                     // TODO: KIRK_TODO: not sure what to do here.
                     throw new KafkaException("Couldn't serialize telemetry");

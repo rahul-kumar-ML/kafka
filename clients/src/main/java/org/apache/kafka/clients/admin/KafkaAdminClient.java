@@ -20,7 +20,7 @@ package org.apache.kafka.clients.admin;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientRequest;
 import org.apache.kafka.clients.ClientResponse;
-import org.apache.kafka.clients.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
 import org.apache.kafka.clients.ClientUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.DefaultHostResolver;
