@@ -3770,6 +3770,7 @@ public class KafkaAdminClient extends AdminClient {
     @Override
     public ListOffsetsResult listOffsets(Map<TopicPartition, OffsetSpec> topicPartitionOffsets,
                                          ListOffsetsOptions options) {
+
         // preparing topics list for asking metadata about them
         final Map<TopicPartition, KafkaFutureImpl<ListOffsetsResultInfo>> futures = new HashMap<>(topicPartitionOffsets.size());
         final Set<String> topics = new HashSet<>();
