@@ -222,33 +222,4 @@ public class TelemetryManagementInterface implements Closeable {
         }
     }
 
-    public long timeToNextUpdate() {
-        long t = 0;
-        TelemetryState s = state();
-
-        if (s == TelemetryState.initialized || s == TelemetryState.subscription_needed) {
-            // TODO: TELEMETRY_TODO: verify
-            t = 0;
-        } else  if (s == TelemetryState.terminated) {
-            // TODO: TELEMETRY_TODO: verify and add a good error message
-            throw new IllegalTelemetryStateException();
-        } else {
-            long milliseconds = time.milliseconds();
-
-            synchronized (subscriptionLock) {
-                if (subscription != null) {
-                    long fetchMs = subscription.fetchMs();
-                    long pushIntervalMs = subscription.pushIntervalMs();
-                    t = fetchMs + pushIntervalMs - milliseconds;
-
-                    if (t < 0)
-                        t = 0;
-                }
-            }
-        }
-
-        log.debug("For state {}, returning {} for time to next update", s, t);
-        return t;
-    }
-
 }

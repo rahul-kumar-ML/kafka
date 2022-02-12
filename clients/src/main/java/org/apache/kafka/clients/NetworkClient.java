@@ -16,28 +16,19 @@
  */
 package org.apache.kafka.clients;
 
-import static org.apache.kafka.common.Uuid.ZERO_UUID;
-
-import java.util.Set;
 import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
 import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry.ConnectionErrorReason;
 import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry.RequestErrorReason;
-import org.apache.kafka.clients.telemetry.IllegalTelemetryStateException;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
-import org.apache.kafka.clients.telemetry.TelemetryState;
-import org.apache.kafka.clients.telemetry.TelemetrySubscription;
-import org.apache.kafka.clients.telemetry.TelemetryUtils;
+import org.apache.kafka.clients.telemetry.TelemetryNetworkClient;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
-import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.DisconnectException;
 import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.apache.kafka.common.message.ApiVersionsResponseData.ApiVersion;
-import org.apache.kafka.common.message.GetTelemetrySubscriptionsResponseData;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.network.ChannelState;
 import org.apache.kafka.common.network.NetworkSend;
@@ -47,21 +38,17 @@ import org.apache.kafka.common.network.Send;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.protocol.types.SchemaException;
-import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.requests.AbstractRequest;
 import org.apache.kafka.common.requests.AbstractResponse;
 import org.apache.kafka.common.requests.ApiVersionsRequest;
 import org.apache.kafka.common.requests.ApiVersionsResponse;
 import org.apache.kafka.common.requests.CorrelationIdMismatchException;
-import org.apache.kafka.common.requests.GetTelemetrySubscriptionRequest;
 import org.apache.kafka.common.requests.GetTelemetrySubscriptionResponse;
 import org.apache.kafka.common.requests.MetadataRequest;
 import org.apache.kafka.common.requests.MetadataResponse;
-import org.apache.kafka.common.requests.PushTelemetryRequest;
 import org.apache.kafka.common.requests.PushTelemetryResponse;
 import org.apache.kafka.common.requests.RequestHeader;
 import org.apache.kafka.common.security.authenticator.SaslClientAuthenticator;
-import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
@@ -149,8 +136,6 @@ public class NetworkClient implements KafkaClient {
     private final ClientTelemetryRegistry clientTelemetryRegistry;
 
     private final AtomicReference<State> state;
-
-    private final TelemetryManagementInterface tmi;
 
     private final TelemetryUpdater telemetryUpdater;
 
@@ -316,8 +301,7 @@ public class NetworkClient implements KafkaClient {
         this.clientTelemetryRegistry = clientTelemetryRegistry;
         this.log = logContext.logger(NetworkClient.class);
         this.state = new AtomicReference<>(State.ACTIVE);
-        this.tmi = tmi;
-        this.telemetryUpdater = tmi != null ? new TelemetryUpdater() : null;
+        this.telemetryUpdater = tmi != null ? new TelemetryUpdater(new TelemetryNetworkClient(tmi)) : null;
     }
 
     /**
@@ -1326,24 +1310,23 @@ public class NetworkClient implements KafkaClient {
 
     class TelemetryUpdater {
 
-        public TelemetryUpdater() {
-            tmi.setState(TelemetryState.subscription_needed);
+        private final TelemetryNetworkClient telemetryNetworkClient;
+
+        public TelemetryUpdater(TelemetryNetworkClient telemetryNetworkClient) {
+            this.telemetryNetworkClient = telemetryNetworkClient;
         }
 
         public long maybeUpdate(long now) {
-            TelemetryState state = tmi.state();
-
-            if (state == TelemetryState.terminated) {
+            if (telemetryNetworkClient.isTerminatedState()) {
                 log.debug("Ignoring attempt to determine telemetry update once terminated");
                 return Long.MAX_VALUE;
             }
 
-            long timeToNextUpdate = tmi.timeToNextUpdate();
-            boolean inProgress = state.isNetworkState();
-            long waitForFetch = inProgress ? defaultRequestTimeoutMs : 0;
+            long timeToNextUpdate = telemetryNetworkClient.timeToNextUpdate();
+            long waitForFetch = telemetryNetworkClient.isNetworkState() ? defaultRequestTimeoutMs : 0;
             long timeout = Math.max(timeToNextUpdate, waitForFetch);
             if (timeout > 0) {
-                log.debug("maybeUpdate - {} - timeToNextUpdate: {}, inProgress: {}, waitForFetch: {}, timeout: {}", clientId, timeToNextUpdate, inProgress, waitForFetch, timeout);
+                log.debug("maybeUpdate - {} - timeToNextUpdate: {}, waitForFetch: {}, timeout: {}", clientId, timeToNextUpdate, waitForFetch, timeout);
                 return timeout;
             }
 
@@ -1357,70 +1340,28 @@ public class NetworkClient implements KafkaClient {
         }
 
         public void handleFailedGetTelemetrySubscriptionRequest(KafkaException maybeFatalException) {
-            if (maybeFatalException != null)
-                log.warn("Failed to retrieve telemetry subscription; using existing subscription", maybeFatalException);
-            else
-                log.warn("Failed to retrieve telemetry subscription; using existing subscription");
-
-            tmi.setState(TelemetryState.subscription_needed);
+            telemetryNetworkClient.telemetrySubscriptionFailed(maybeFatalException);
         }
 
         public void handleFailedPushTelemetryRequest(KafkaException maybeFatalException) {
-            if (maybeFatalException != null)
-                log.warn("Failed to push telemetry", maybeFatalException);
-            else
-                log.warn("Failed to push telemetry", new Exception());
-
-            TelemetryState state = tmi.state();
-
-            if (state == TelemetryState.push_in_progress)
-                tmi.setState(TelemetryState.subscription_needed);
-            else if (state == TelemetryState.terminating_push_in_progress)
-                tmi.setState(TelemetryState.terminated);
-            else
-                throw new IllegalTelemetryStateException(String.format("Could not transition state after failed push telemetry from state %s", state));
+            telemetryNetworkClient.pushTelemetryFailed(maybeFatalException);
         }
 
         public void handleSuccessfulGetTelemetrySubscriptionResponse(GetTelemetrySubscriptionResponse response) {
             log.trace("Successfully received GetTelemetrySubscriptionResponse: {}", response);
-            GetTelemetrySubscriptionsResponseData data = response.data();
-            Set<MetricName> metricNames = TelemetryUtils.validateMetricNames(data.requestedMetrics());
-            List<CompressionType> acceptedCompressionTypes = TelemetryUtils.validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
-            Uuid clientInstanceId = TelemetryUtils.validateClientInstanceId(data.clientInstanceId());
-            int pushIntervalMs = TelemetryUtils.validatePushInteravlMs(data.pushIntervalMs());
-
-            TelemetrySubscription telemetrySubscription = new TelemetrySubscription(time.milliseconds(),
-                data.throttleTimeMs(),
-                clientInstanceId,
-                data.subscriptionId(),
-                acceptedCompressionTypes,
-                pushIntervalMs,
-                data.deltaTemporality(),
-                metricNames);
-
-            log.debug("Successfully retrieved telemetry subscription: {}", telemetrySubscription);
-            tmi.setSubscription(telemetrySubscription);
-            tmi.setState(TelemetryState.push_needed);
+            telemetryNetworkClient.telemetrySubscriptionSucceeded(response.data());
         }
 
         public void handleSuccessfulPushTelemetryResponse(PushTelemetryResponse response) {
             log.trace("Successfully received PushTelemetryResponse: {}", response);
-
-            TelemetryState state = tmi.state();
-
-            if (state == TelemetryState.push_in_progress)
-                tmi.setState(TelemetryState.subscription_needed);
-            else if (state == TelemetryState.terminating_push_in_progress)
-                tmi.setState(TelemetryState.terminated);
-            else
-                throw new IllegalTelemetryStateException(String.format("Could not transition state after successful push telemetry from state %s", state));
+            telemetryNetworkClient.pushTelemetrySucceeded();
         }
 
         private long maybeUpdate(long now, Node node) {
             String nodeConnectionId = node.idString();
 
             if (canSendRequest(nodeConnectionId, now)) {
-                AbstractRequest.Builder<?> request = createRequest();
+                AbstractRequest.Builder<?> request = telemetryNetworkClient.createRequest();
                 ClientRequest clientRequest = newClientRequest(nodeConnectionId, request, now, true);
                 doSend(clientRequest, true, now);
                 return defaultRequestTimeoutMs;
@@ -1446,36 +1387,6 @@ public class NetworkClient implements KafkaClient {
             // In either case, we just need to wait for a network event to let us know the selected
             // connection might be usable again.
             return Long.MAX_VALUE;
-        }
-
-        private AbstractRequest.Builder<?> createRequest() {
-            TelemetrySubscription subscription = tmi.subscription();
-            Uuid clientInstanceId = subscription != null ? subscription.clientInstanceId() : ZERO_UUID;
-
-            if (tmi.state() == TelemetryState.subscription_needed) {
-                tmi.setState(TelemetryState.subscription_in_progress);
-                return new GetTelemetrySubscriptionRequest.Builder(clientInstanceId);
-            } else if (tmi.state() == TelemetryState.push_needed) {
-                if (subscription == null)
-                    throw new IllegalStateException(String.format("Telemetry state is %s but subscription is null", state));
-
-                boolean terminating = tmi.state() == TelemetryState.terminating;
-                CompressionType compressionType = TelemetryUtils.preferredCompressionType(subscription.acceptedCompressionTypes());
-                Bytes bytes = TelemetryUtils.collectMetricsPayload(tmi, compressionType, subscription.deltaTemporality());
-
-                if (terminating)
-                    tmi.setState(TelemetryState.terminating_push_in_progress);
-                else
-                    tmi.setState(TelemetryState.push_in_progress);
-
-                return new PushTelemetryRequest.Builder(subscription.clientInstanceId(),
-                    subscription.subscriptionId(),
-                    terminating,
-                    compressionType,
-                    bytes);
-            } else {
-                throw new IllegalStateException(String.format("Cannot make telemetry request as telemetry is in state: %s", tmi.state()));
-            }
         }
 
     }

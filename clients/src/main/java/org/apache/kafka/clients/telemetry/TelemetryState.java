@@ -28,13 +28,6 @@ public enum TelemetryState {
     terminating_push_in_progress,
     terminated;
 
-    public boolean isNetworkState() {
-        return
-            this == subscription_in_progress ||
-                this == push_in_progress ||
-                this == terminating_push_in_progress;
-    }
-
     public TelemetryState validateTransition(TelemetryState newState) {
         switch (this) {
             case initialized:
