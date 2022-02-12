@@ -669,7 +669,6 @@ public class Sender implements Runnable {
     private void reenqueueBatch(ProducerBatch batch, long currentTimeMs) {
         this.accumulator.reenqueue(batch, currentTimeMs);
         maybeRemoveFromInflightBatches(batch);
-
         this.sensors.recordRetries(batch.topicPartition, batch.recordCount);
     }
 
@@ -872,7 +871,6 @@ public class Sender implements Runnable {
         public final Sensor compressionRateSensor;
         public final Sensor maxRecordSizeSensor;
         public final Sensor batchSplitSensor;
-
         private final SenderMetricsRegistry metrics;
         private final short acks;
         private final ProducerTelemetryRegistry producerTelemetryRegistry;
@@ -1004,7 +1002,6 @@ public class Sender implements Runnable {
                     this.queueTimeSensor.record(batch.queueTimeMs(), now);
                     this.compressionRateSensor.record(batch.compressionRatio());
                     this.maxRecordSizeSensor.record(batch.maxRecordSize, now);
-
                     records += batch.recordCount;
                 }
                 this.recordsPerRequestSensor.record(records, now);
@@ -1014,30 +1011,29 @@ public class Sender implements Runnable {
         public void recordRetries(TopicPartition topicPartition, int count) {
             long now = time.milliseconds();
             this.retrySensor.record(count, now);
-
-            if (producerTopicTelemetryRegistry != null)
-                producerTopicTelemetryRegistry.recordRetries(topicPartition, acks).record(count);
-
             String topicRetryName = "topic." + topicPartition.topic() + ".record-retries";
             Sensor topicRetrySensor = this.metrics.getSensor(topicRetryName);
             if (topicRetrySensor != null)
                 topicRetrySensor.record(count, now);
+
+            if (producerTopicTelemetryRegistry != null)
+                producerTopicTelemetryRegistry.recordRetries(topicPartition, acks).record(count);
         }
 
         public void recordErrors(TopicPartition topicPartition, int count, Throwable error) {
             long now = time.milliseconds();
             this.errorSensor.record(count, now);
 
+            String topicErrorName = "topic." + topicPartition.topic() + ".record-errors";
+            Sensor topicErrorSensor = this.metrics.getSensor(topicErrorName);
+            if (topicErrorSensor != null)
+                topicErrorSensor.record(count, now);
+
             if (producerTopicTelemetryRegistry != null) {
                 // TODO: TELEMETRY_TODO: properly convert the error to a "reason"
                 String reason = String.valueOf(error);
                 producerTopicTelemetryRegistry.recordFailures(topicPartition, acks, reason).record(count);
             }
-
-            String topicErrorName = "topic." + topicPartition.topic() + ".record-errors";
-            Sensor topicErrorSensor = this.metrics.getSensor(topicErrorName);
-            if (topicErrorSensor != null)
-                topicErrorSensor.record(count, now);
         }
 
         public void recordLatency(String node, long latency) {
