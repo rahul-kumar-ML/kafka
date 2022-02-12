@@ -3415,6 +3415,7 @@ public class KafkaAdminClient extends AdminClient {
         return new DeleteConsumerGroupOffsetsResult(future.get(CoordinatorKey.byGroupId(groupId)), partitions);
     }
 
+    @Override
     public String clientInstanceId(Duration timeout) {
         return tmi != null ? tmi.clientInstanceId(timeout) : null;
     }

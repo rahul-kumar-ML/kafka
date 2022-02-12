@@ -24,7 +24,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Uuid;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.metrics.KafkaMetricsContext;
 import org.apache.kafka.common.metrics.Measurable;
 import org.apache.kafka.common.metrics.MetricConfig;
@@ -157,21 +159,41 @@ public class TelemetryManagementInterface implements Closeable {
         }
     }
 
+    /**
+     * Determines the client's unique client instance ID used for telemetry. This ID is unique to
+     * the specific enclosing client instance and will not change after it is initially generated.
+     * The ID is useful for correlating client operations with telemetry sent to the broker and
+     * to its eventual monitoring destination(s).
+     *
+     * This method waits up to <code>timeout</code> for the subscription to become available in
+     * order to complete the request.
+     *
+     * @param timeout The maximum time to wait for enclosing client instance to determine its
+     *                client instance ID. The value should be non-negative. Specifying a timeout
+     *                of zero means do not wait for the initial request to complete if it hasn't
+     *                already.
+     * @throws InterruptException If the thread is interrupted while blocked.
+     * @throws KafkaException If an unexpected error occurs while trying to determine the client
+     *                        instance ID, though this error does not necessarily imply the
+     *                        enclosing client instance is otherwise unusable.
+     * @throws IllegalArgumentException If the <code>timeout</code> is negative.
+     * @return Human-readable string representation of the client instance ID
+     */
     public String clientInstanceId(Duration timeout) {
-        if (timeout == null) {
-            // TODO: TELEMETRY_TODO: I dunno. I'm not sure about this...
-            timeout = Duration.ZERO;
-            log.debug("Client instance ID retrieval was requested with a null timeout. Substituting with a zero duration");
-        }
+        long timeoutMs = timeout.toMillis();
+        if (timeoutMs < 0)
+            throw new IllegalArgumentException("The timeout cannot be negative.");
 
         synchronized (subscriptionLock) {
             if (subscription == null) {
-                // If we have a non-zero timeout and no-subscription, let's wait for one to
+                // If we have a non-negative timeout and no-subscription, let's wait for one to
                 // be retrieved.
+                log.debug("Waiting for telemetry subscription containing the client instance ID with timeoutMillis = {} ms.", timeoutMs);
+
                 try {
-                    subscriptionLock.wait(timeout.toMillis());
+                    subscriptionLock.wait(timeoutMs);
                 } catch (InterruptedException e) {
-                    log.debug("Interrupted while waiting for subscription retrieval to determine client instance ID", e);
+                    throw new InterruptException(e);
                 }
             }
 

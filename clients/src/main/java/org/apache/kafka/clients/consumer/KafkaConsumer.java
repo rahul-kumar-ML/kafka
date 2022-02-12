@@ -1907,6 +1907,32 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         }
     }
 
+    /**
+     * Determines the client's unique client instance ID used for telemetry. This ID is unique to
+     * this specific client instance and will not change after it is initially generated.
+     * The ID is useful for correlating client operations with telemetry sent to the broker and
+     * to its eventual monitoring destination(s).
+     *
+     * If telemetry is enabled, this will first require a connection to the cluster to generate
+     * the unique client instance ID. This method waits up to <code>timeout</code> for the consumer
+     * to complete the request.
+     *
+     * If telemetry is disabled, the method will immediately return <code>null</code>.
+     *
+     * Client telemetry is controlled by the {@link ConsumerConfig#ENABLE_METRICS_PUSH_CONFIG}
+     * configuration option.
+     *
+     * @param timeout The maximum time to wait for consumer to determine its client instance ID.
+     *                The value should be non-negative. Specifying a timeout of zero means do not
+     *                wait for the initial request to complete if it hasn't already.
+     * @throws InterruptException If the thread is interrupted while blocked.
+     * @throws KafkaException If an unexpected error occurs while trying to determine the client
+     *                        instance ID, though this error does not necessarily imply the
+     *                        consumer is otherwise unusable.
+     * @throws IllegalArgumentException If the <code>timeout</code> is negative.
+     * @return Human-readable string representation of the client instance ID
+     */
+    @Override
     public String clientInstanceId(Duration timeout) {
         return tmi != null ? tmi.clientInstanceId(timeout) : null;
     }
