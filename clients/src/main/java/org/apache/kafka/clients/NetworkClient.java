@@ -20,7 +20,6 @@ import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
 import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry.ConnectionErrorReason;
 import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry.RequestErrorReason;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
-import org.apache.kafka.clients.telemetry.TelemetryNetworkClient;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Node;
@@ -301,7 +300,7 @@ public class NetworkClient implements KafkaClient {
         this.clientTelemetryRegistry = clientTelemetryRegistry;
         this.log = logContext.logger(NetworkClient.class);
         this.state = new AtomicReference<>(State.ACTIVE);
-        this.telemetryUpdater = tmi != null ? new TelemetryUpdater(new TelemetryNetworkClient(tmi)) : null;
+        this.telemetryUpdater = tmi != null ? new TelemetryUpdater(tmi) : null;
     }
 
     /**
@@ -1310,20 +1309,20 @@ public class NetworkClient implements KafkaClient {
 
     class TelemetryUpdater {
 
-        private final TelemetryNetworkClient telemetryNetworkClient;
+        private final TelemetryManagementInterface tmi;
 
-        public TelemetryUpdater(TelemetryNetworkClient telemetryNetworkClient) {
-            this.telemetryNetworkClient = telemetryNetworkClient;
+        public TelemetryUpdater(TelemetryManagementInterface tmi) {
+            this.tmi = tmi;
         }
 
         public long maybeUpdate(long now) {
-            if (telemetryNetworkClient.isTerminatedState()) {
+            if (tmi.isTerminatedState()) {
                 log.debug("Ignoring attempt to determine telemetry update once terminated");
                 return Long.MAX_VALUE;
             }
 
-            long timeToNextUpdate = telemetryNetworkClient.timeToNextUpdate();
-            long waitForFetch = telemetryNetworkClient.isNetworkState() ? defaultRequestTimeoutMs : 0;
+            long timeToNextUpdate = tmi.timeToNextUpdate();
+            long waitForFetch = tmi.isNetworkState() ? defaultRequestTimeoutMs : 0;
             long timeout = Math.max(timeToNextUpdate, waitForFetch);
             if (timeout > 0) {
                 log.debug("maybeUpdate - {} - timeToNextUpdate: {}, waitForFetch: {}, timeout: {}", clientId, timeToNextUpdate, waitForFetch, timeout);
@@ -1340,28 +1339,28 @@ public class NetworkClient implements KafkaClient {
         }
 
         public void handleFailedGetTelemetrySubscriptionRequest(KafkaException maybeFatalException) {
-            telemetryNetworkClient.telemetrySubscriptionFailed(maybeFatalException);
+            tmi.telemetrySubscriptionFailed(maybeFatalException);
         }
 
         public void handleFailedPushTelemetryRequest(KafkaException maybeFatalException) {
-            telemetryNetworkClient.pushTelemetryFailed(maybeFatalException);
+            tmi.pushTelemetryFailed(maybeFatalException);
         }
 
         public void handleSuccessfulGetTelemetrySubscriptionResponse(GetTelemetrySubscriptionResponse response) {
             log.trace("Successfully received GetTelemetrySubscriptionResponse: {}", response);
-            telemetryNetworkClient.telemetrySubscriptionSucceeded(response.data());
+            tmi.telemetrySubscriptionSucceeded(response.data());
         }
 
         public void handleSuccessfulPushTelemetryResponse(PushTelemetryResponse response) {
             log.trace("Successfully received PushTelemetryResponse: {}", response);
-            telemetryNetworkClient.pushTelemetrySucceeded();
+            tmi.pushTelemetrySucceeded();
         }
 
         private long maybeUpdate(long now, Node node) {
             String nodeConnectionId = node.idString();
 
             if (canSendRequest(nodeConnectionId, now)) {
-                AbstractRequest.Builder<?> request = telemetryNetworkClient.createRequest();
+                AbstractRequest.Builder<?> request = tmi.createRequest();
                 ClientRequest clientRequest = newClientRequest(nodeConnectionId, request, now, true);
                 doSend(clientRequest, true, now);
                 return defaultRequestTimeoutMs;

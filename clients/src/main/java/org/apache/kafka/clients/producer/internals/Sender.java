@@ -23,7 +23,7 @@ import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.NetworkClientUtils;
 import org.apache.kafka.clients.RequestCompletionHandler;
-import org.apache.kafka.clients.telemetry.TelemetryUtils;
+import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.InvalidRecordException;
 import org.apache.kafka.common.KafkaException;
@@ -1030,7 +1030,7 @@ public class Sender implements Runnable {
                 topicErrorSensor.record(count, now);
 
             if (producerTopicTelemetryRegistry != null) {
-                String reason = TelemetryUtils.convertErrorToReason(error);
+                String reason = TelemetryManagementInterface.convertErrorToReason(error);
                 producerTopicTelemetryRegistry.recordFailures(topicPartition, acks, reason).record(count);
             }
         }

@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class TelemetryUtilsTest {
+public class TelemetryManagementInterfaceTest {
 
     @Test
     public void testLZ4CompressedSerialization() throws IOException {
@@ -61,7 +61,7 @@ public class TelemetryUtilsTest {
         TelemetryMetric telemetryMetric2 = telemetryMetric("test-2", 123);
         StringTelemetrySerializer telemetrySerializer = new StringTelemetrySerializer();
         List<TelemetryMetric> telemetryMetrics = Arrays.asList(telemetryMetric1, telemetryMetric2);
-        ByteBuffer compressed = TelemetryUtils.serialize(telemetryMetrics,
+        ByteBuffer compressed = TelemetryManagementInterface.serialize(telemetryMetrics,
             compressionType,
             telemetrySerializer);
 
