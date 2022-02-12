@@ -277,6 +277,7 @@
   <subpackage name="clients">
     <allow pkg="org.apache.kafka.common" />
     <allow pkg="org.apache.kafka.clients" exact-match="true"/>
+    <allow pkg="org.apache.kafka.test" />
     <allow pkg="org.apache.kafka.clients.telemetry" />
 
     <subpackage name="consumer">
