@@ -165,4 +165,9 @@ public class TelemetryUtils {
             return null;
     }
 
+    public static String convertErrorToReason(Throwable error) {
+        // TODO: TELEMETRY_TODO: properly convert the error to a "reason"
+        return String.valueOf(error);
+    }
+
 }
