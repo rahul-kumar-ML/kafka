@@ -82,6 +82,10 @@ public class CommonClientConfigs {
     public static final String RETRY_BACKOFF_MS_CONFIG = "retry.backoff.ms";
     public static final String RETRY_BACKOFF_MS_DOC = "The amount of time to wait before attempting to retry a failed request to a given topic partition. This avoids repeatedly sending requests in a tight loop under some failure scenarios.";
 
+    public static final String ENABLE_METRICS_PUSH_CONFIG = "enable.metrics.push";
+    // TODO: TELEMETRY_TODO: yeah, need some really good documentation
+    public static final String ENABLE_METRICS_PUSH_DOC = "";
+
     public static final String METRICS_SAMPLE_WINDOW_MS_CONFIG = "metrics.sample.window.ms";
     public static final String METRICS_SAMPLE_WINDOW_MS_DOC = "The window of time a metrics sample is computed over.";
 

@@ -368,8 +368,8 @@ public class MockProducer<K, V> implements Producer<K, V> {
 
     @Override
     public String clientInstanceId(Duration duration) {
-        // TODO: KIRK_TODO: does this need to be anything realistic?
-        return "client-1";
+        // TODO: TELEMETRY_TODO: does this need to be anything realistic?
+        return "producer-client-1";
     }
 
     public Map<MetricName, Metric> metrics() {

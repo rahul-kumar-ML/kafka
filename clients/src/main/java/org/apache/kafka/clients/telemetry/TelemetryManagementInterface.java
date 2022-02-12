@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.metrics.KafkaMetricsContext;
 import org.apache.kafka.common.metrics.Measurable;
 import org.apache.kafka.common.metrics.MetricConfig;
@@ -96,7 +97,22 @@ public class TelemetryManagementInterface implements Closeable {
     @Override
     public void close() {
         log.trace("close");
-        setState(TelemetryState.terminating);
+        boolean shouldClose = false;
+
+        synchronized (stateLock) {
+            TelemetryState currState = state();
+
+            // TODO: TELEMETRY_TODO: support ability to close multiple times.
+            if (currState != TelemetryState.terminating) {
+                shouldClose = true;
+                setState(TelemetryState.terminating);
+            }
+        }
+
+        if (shouldClose) {
+            telemetryMetricsReporter.close();
+            metrics.close();
+        }
     }
 
     public ByteBuffer collectMetricsPayload(CompressionType compressionType, boolean deltaTemporality) throws IOException {
@@ -142,21 +158,32 @@ public class TelemetryManagementInterface implements Closeable {
     }
 
     public String clientInstanceId(Duration timeout) {
+        if (timeout == null) {
+            // TODO: TELEMETRY_TODO: I dunno. I'm not sure about this...
+            timeout = Duration.ZERO;
+            log.debug("Client instance ID retrieval was requested with a null timeout. Substituting with a zero duration");
+        }
+
         synchronized (subscriptionLock) {
             if (subscription == null) {
+                // If we have a non-zero timeout and no-subscription, let's wait for one to
+                // be retrieved.
                 try {
                     subscriptionLock.wait(timeout.toMillis());
                 } catch (InterruptedException e) {
-                    // TODO: KIRK_TODO: figure out what we're supposed to do here.
+                    log.debug("Interrupted while waiting for subscription retrieval to determine client instance ID", e);
                 }
             }
 
-            if (subscription == null) {
-                // TODO: KIRK_TODO: verify this is correct and add some explanation.
-                throw new IllegalTelemetryStateException();
-            }
+            if (subscription == null)
+                throw new IllegalTelemetryStateException("Client instance ID could not be retrieved with timeout: " + timeout);
 
-            return subscription.clientInstanceId().toString();
+            Uuid clientInstanceId = subscription.clientInstanceId();
+
+            if (clientInstanceId == null)
+                throw new IllegalTelemetryStateException("Client instance ID was null in telemetry subscription while in state " + state());
+
+            return clientInstanceId.toString();
         }
     }
 
@@ -178,10 +205,10 @@ public class TelemetryManagementInterface implements Closeable {
         TelemetryState s = state();
 
         if (s == TelemetryState.initialized || s == TelemetryState.subscription_needed) {
-            // TODO: KIRK_TODO: verify
+            // TODO: TELEMETRY_TODO: verify
             t = 0;
         } else  if (s == TelemetryState.terminated) {
-            // TODO: KIRK_TODO: verify and add a good error message
+            // TODO: TELEMETRY_TODO: verify and add a good error message
             throw new IllegalTelemetryStateException();
         } else {
             long milliseconds = time.milliseconds();

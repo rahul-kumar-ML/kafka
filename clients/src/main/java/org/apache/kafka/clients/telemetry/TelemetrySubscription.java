@@ -50,7 +50,7 @@ public class TelemetrySubscription {
         this.acceptedCompressionTypes = Collections.unmodifiableList(acceptedCompressionTypes);
         this.pushIntervalMs = pushIntervalMs;
         this.deltaTemporality = deltaTemporality;
-        this.metricNames = metricNames;
+        this.metricNames = Collections.unmodifiableSet(metricNames);
     }
 
     public long fetchMs() {

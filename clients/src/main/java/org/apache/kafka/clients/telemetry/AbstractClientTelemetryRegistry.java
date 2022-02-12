@@ -67,7 +67,7 @@ public abstract class AbstractClientTelemetryRegistry {
 //    }
 
     protected Sensor gaugeSensor(MetricName mn) {
-        // TODO: KIRK_TODO: gauge...
+        // TODO: TELEMETRY_TODO: need to implement gauges...
         return sensor(mn, CumulativeSum::new);
     }
 
@@ -77,7 +77,7 @@ public abstract class AbstractClientTelemetryRegistry {
     }
 
     protected Sensor histogramSensor(MetricName mn) {
-        // TODO: KIRK_TODO: histogram...
+        // TODO: TELEMETRY_TODO: need to implement histogram...
         return sensor(mn, CumulativeSum::new);
     }
 
@@ -87,7 +87,7 @@ public abstract class AbstractClientTelemetryRegistry {
     }
 
     protected Sensor stringSensor(MetricName mn) {
-        // TODO: KIRK_TODO: string...
+        // TODO: TELEMETRY_TODO: how to send a string as a metric?
         return sensor(mn, CumulativeSum::new);
     }
 

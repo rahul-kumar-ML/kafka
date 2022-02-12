@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.telemetry.AbstractClientTelemetryRegistry;
 import org.apache.kafka.common.MetricNameTemplate;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 
@@ -85,47 +86,47 @@ public class ProducerTopicTelemetryRegistry extends AbstractClientTelemetryRegis
             topicPartitionAcksTags);
     }
 
-    public Sensor queueBytes(String topic, int partition, short acks) {
-        Map<String, String> metricsTags = getMetricsTags(topic, partition, acks);
+    public Sensor queueBytes(TopicPartition topicPartition, short acks) {
+        Map<String, String> metricsTags = getMetricsTags(topicPartition, acks);
         return gaugeSensor(queueBytes, metricsTags);
     }
 
-    public Sensor queueCount(String topic, int partition, short acks) {
-        Map<String, String> metricsTags = getMetricsTags(topic, partition, acks);
+    public Sensor queueCount(TopicPartition topicPartition, short acks) {
+        Map<String, String> metricsTags = getMetricsTags(topicPartition, acks);
         return gaugeSensor(queueCount, metricsTags);
     }
 
-    public Sensor latency(String topic, int partition, short acks) {
-        Map<String, String> metricsTags = getMetricsTags(topic, partition, acks);
+    public Sensor latency(TopicPartition topicPartition, short acks) {
+        Map<String, String> metricsTags = getMetricsTags(topicPartition, acks);
         return histogramSensor(latency, metricsTags);
     }
 
-    public Sensor queueLatency(String topic, int partition, short acks) {
-        Map<String, String> metricsTags = getMetricsTags(topic, partition, acks);
+    public Sensor queueLatency(TopicPartition topicPartition, short acks) {
+        Map<String, String> metricsTags = getMetricsTags(topicPartition, acks);
         return histogramSensor(queueLatency, metricsTags);
     }
 
-    public Sensor recordRetries(String topic, int partition, short acks) {
-        Map<String, String> metricsTags = getMetricsTags(topic, partition, acks);
+    public Sensor recordRetries(TopicPartition topicPartition, short acks) {
+        Map<String, String> metricsTags = getMetricsTags(topicPartition, acks);
         return sumSensor(recordRetries, metricsTags);
     }
 
-    public Sensor recordFailures(String topic, int partition, short acks, String reason) {
-        Map<String, String> metricsTags = getMetricsTags(topic, partition, acks);
+    public Sensor recordFailures(TopicPartition topicPartition, short acks, String reason) {
+        Map<String, String> metricsTags = getMetricsTags(topicPartition, acks);
         metricsTags.put(REASON_LABEL, reason);
         return sumSensor(recordFailures, metricsTags);
     }
 
-    public Sensor recordSuccess(String topic, int partition, short acks) {
-        Map<String, String> metricsTags = getMetricsTags(topic, partition, acks);
+    public Sensor recordSuccess(TopicPartition topicPartition, short acks) {
+        Map<String, String> metricsTags = getMetricsTags(topicPartition, acks);
         return sumSensor(recordSuccess, metricsTags);
     }
 
-    private Map<String, String> getMetricsTags(String topic, int partition, short acks) {
+    private Map<String, String> getMetricsTags(TopicPartition topicPartition, short acks) {
         Map<String, String> metricsTags = new HashMap<>();
         metricsTags.put(ACKS_LABEL, formatAcks(String.valueOf(acks)));
-        metricsTags.put(PARTITION_LABEL, String.valueOf(partition));
-        metricsTags.put(TOPIC_LABEL, topic);
+        metricsTags.put(PARTITION_LABEL, String.valueOf(topicPartition.partition()));
+        metricsTags.put(TOPIC_LABEL, topicPartition.topic());
         return metricsTags;
     }
 
@@ -135,7 +136,7 @@ public class ProducerTopicTelemetryRegistry extends AbstractClientTelemetryRegis
     }
 
     static String formatAcks(String acks) {
-        // TODO: KIRK_TODO: this mapping needs to be verified
+        // TODO: TELEMETRY_TODO: this mapping needs to be verified
         if (acks == null)
             return "all";
 

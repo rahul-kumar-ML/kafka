@@ -669,7 +669,8 @@ public class Sender implements Runnable {
     private void reenqueueBatch(ProducerBatch batch, long currentTimeMs) {
         this.accumulator.reenqueue(batch, currentTimeMs);
         maybeRemoveFromInflightBatches(batch);
-        this.sensors.recordRetries(batch.topicPartition.topic(), batch.topicPartition.partition(), batch.recordCount);
+
+        this.sensors.recordRetries(batch.topicPartition, batch.recordCount);
     }
 
     private void completeBatch(ProducerBatch batch, ProduceResponse.PartitionResponse response) {
@@ -755,7 +756,7 @@ public class Sender implements Runnable {
             transactionManager.handleFailedBatch(batch, topLevelException, adjustSequenceNumbers);
         }
 
-        this.sensors.recordErrors(batch.topicPartition.topic(), batch.topicPartition.partition(), batch.recordCount, topLevelException);
+        this.sensors.recordErrors(batch.topicPartition, batch.recordCount, topLevelException);
 
         if (batch.completeExceptionally(topLevelException, recordExceptions)) {
             maybeRemoveAndDeallocateBatch(batch);
@@ -990,9 +991,13 @@ public class Sender implements Runnable {
                     Sensor topicCompressionRate = Objects.requireNonNull(this.metrics.getSensor(topicCompressionRateName));
                     topicCompressionRate.record(batch.compressionRatio());
 
-                    producerTelemetryRegistry.recordCount().record(batch.recordCount);
-                    producerTelemetryRegistry.recordBytes().record(batch.estimatedSizeInBytes());
-                    producerTopicTelemetryRegistry.recordSuccess(topic, batch.topicPartition.partition(), acks).record(batch.recordCount);
+                    if (producerTelemetryRegistry != null) {
+                        producerTelemetryRegistry.recordCount().record(batch.recordCount);
+                        producerTelemetryRegistry.recordBytes().record(batch.estimatedSizeInBytes());
+                    }
+
+                    if (producerTopicTelemetryRegistry != null)
+                        producerTopicTelemetryRegistry.recordSuccess(batch.topicPartition, acks).record(batch.recordCount);
 
                     // global metrics
                     this.batchSizeSensor.record(batch.estimatedSizeInBytes(), now);
@@ -1006,21 +1011,30 @@ public class Sender implements Runnable {
             }
         }
 
-        public void recordRetries(String topic, int partition, int count) {
+        public void recordRetries(TopicPartition topicPartition, int count) {
             long now = time.milliseconds();
             this.retrySensor.record(count, now);
-            producerTopicTelemetryRegistry.recordRetries(topic, partition, acks).record(count);
-            String topicRetryName = "topic." + topic + ".record-retries";
+
+            if (producerTopicTelemetryRegistry != null)
+                producerTopicTelemetryRegistry.recordRetries(topicPartition, acks).record(count);
+
+            String topicRetryName = "topic." + topicPartition.topic() + ".record-retries";
             Sensor topicRetrySensor = this.metrics.getSensor(topicRetryName);
             if (topicRetrySensor != null)
                 topicRetrySensor.record(count, now);
         }
 
-        public void recordErrors(String topic, int partition, int count, Throwable error) {
+        public void recordErrors(TopicPartition topicPartition, int count, Throwable error) {
             long now = time.milliseconds();
             this.errorSensor.record(count, now);
-            producerTopicTelemetryRegistry.recordFailures(topic, partition, acks, String.valueOf(error)).record(count);
-            String topicErrorName = "topic." + topic + ".record-errors";
+
+            if (producerTopicTelemetryRegistry != null) {
+                // TODO: TELEMETRY_TODO: properly convert the error to a "reason"
+                String reason = String.valueOf(error);
+                producerTopicTelemetryRegistry.recordFailures(topicPartition, acks, reason).record(count);
+            }
+
+            String topicErrorName = "topic." + topicPartition.topic() + ".record-errors";
             Sensor topicErrorSensor = this.metrics.getSensor(topicErrorName);
             if (topicErrorSensor != null)
                 topicErrorSensor.record(count, now);

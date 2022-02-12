@@ -2414,7 +2414,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         Utils.closeQuietly(fetcher, "fetcher", firstException);
         Utils.closeQuietly(interceptors, "consumer interceptors", firstException);
         Utils.closeQuietly(kafkaConsumerMetrics, "kafka consumer metrics", firstException);
-        // TODO: KIRK_TODO: figure out where/how to properly close telemetry metrics given that
+        // TODO: TELEMETRY_TODO: figure out where/how to properly close telemetry metrics given that
         //       we need to write out our terminal set of metrics when closing...
         Utils.closeQuietly(tmi, "client telemetry", firstException);
         Utils.closeQuietly(metrics, "consumer metrics", firstException);

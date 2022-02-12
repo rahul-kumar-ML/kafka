@@ -3460,7 +3460,7 @@ class KafkaApis(val requestChannel: RequestChannel,
 
   // Just a place holder for now.
   def handleGetTelemetrySubscriptionRequest(request: RequestChannel.Request): Unit = {
-    // TODO: KIRK_TODO: remove this...
+    // TODO: TELEMETRY_TODO: remove this once Sarat's stuff is in the staging branch...
     logger.warn("In handleGetTelemetrySubscriptionRequest");
     val subscriptionRequest = request.body[GetTelemetrySubscriptionRequest]
 
@@ -3472,7 +3472,7 @@ class KafkaApis(val requestChannel: RequestChannel,
 
   // Just a place holder for now.
   def handlePushTelemetryRequest(request: RequestChannel.Request): Unit = {
-    // TODO: KIRK_TODO: remove this...
+    // TODO: TELEMETRY_TODO: remove this once Sarat's stuff is in the staging branch...
     logger.warn("In handlePushTelemetryRequest");
     val pushTelemetryRequest = request.body[PushTelemetryRequest]
 

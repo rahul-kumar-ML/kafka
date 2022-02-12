@@ -392,9 +392,9 @@ public class NetworkClient implements KafkaClient {
             } else if (request.header.apiKey() == ApiKeys.METADATA) {
                 metadataUpdater.handleFailedRequest(now, Optional.empty());
             } else if (telemetryUpdater != null && request.header.apiKey() == ApiKeys.GET_TELEMETRY_SUBSCRIPTIONS) {
-                telemetryUpdater.handleFailedGetTelemetrySubscriptionRequest(now, Optional.empty());
+                telemetryUpdater.handleFailedGetTelemetrySubscriptionRequest(null);
             } else if (telemetryUpdater != null && request.header.apiKey() == ApiKeys.PUSH_TELEMETRY) {
-                telemetryUpdater.handleFailedPushTelemetryRequest(now, Optional.empty());
+                telemetryUpdater.handleFailedPushTelemetryRequest(null);
             }
         }
     }
@@ -560,9 +560,9 @@ public class NetworkClient implements KafkaClient {
             else if (clientRequest.apiKey() == ApiKeys.METADATA)
                 metadataUpdater.handleFailedRequest(now, Optional.of(unsupportedVersionException));
             else if (telemetryUpdater != null && clientRequest.apiKey() == ApiKeys.GET_TELEMETRY_SUBSCRIPTIONS)
-                telemetryUpdater.handleFailedGetTelemetrySubscriptionRequest(now, Optional.of(unsupportedVersionException));
+                telemetryUpdater.handleFailedGetTelemetrySubscriptionRequest(unsupportedVersionException);
             else if (telemetryUpdater != null && clientRequest.apiKey() == ApiKeys.PUSH_TELEMETRY)
-                telemetryUpdater.handleFailedPushTelemetryRequest(now, Optional.of(unsupportedVersionException));
+                telemetryUpdater.handleFailedPushTelemetryRequest(unsupportedVersionException);
         }
     }
 
@@ -948,9 +948,9 @@ public class NetworkClient implements KafkaClient {
             else if (req.isInternalRequest && response instanceof ApiVersionsResponse)
                 handleApiVersionsResponse(responses, req, now, (ApiVersionsResponse) response);
             else if (req.isInternalRequest && telemetryUpdater != null && response instanceof GetTelemetrySubscriptionResponse)
-                telemetryUpdater.handleSuccessfulGetTelemetrySubscriptionResponse(req.header, now, (GetTelemetrySubscriptionResponse) response);
+                telemetryUpdater.handleSuccessfulGetTelemetrySubscriptionResponse((GetTelemetrySubscriptionResponse) response);
             else if (req.isInternalRequest && telemetryUpdater != null && response instanceof PushTelemetryResponse)
-                telemetryUpdater.handleSuccessfulPushTelemetryResponse(req.header, now, (PushTelemetryResponse) response);
+                telemetryUpdater.handleSuccessfulPushTelemetryResponse((PushTelemetryResponse) response);
             else
                 responses.add(req.completed(response, now));
         }
@@ -1068,7 +1068,7 @@ public class NetworkClient implements KafkaClient {
 
     private void incrementRequestErrorsTelemetry(String brokerId, RequestErrorReason reason) {
         if (clientTelemetryRegistry != null) {
-            // TODO: KIRK_TODO: I don't have this...
+            // TODO: TELEMETRY_TODO: I don't have the request type anywhere readily available...
             String requestType = "requestType TBA";
             Sensor s = clientTelemetryRegistry.requestErrors(brokerId, requestType, reason);
             s.record();
@@ -1079,7 +1079,7 @@ public class NetworkClient implements KafkaClient {
         if (clientTelemetryRegistry != null) {
             ConnectionErrorReason reason = null;
 
-            // TODO: KIRK_TODO: there's no way this mapping is correct...
+            // TODO: TELEMETRY_TODO: there's no way this mapping is correct...
             switch (errors) {
                 case NETWORK_EXCEPTION:
                     reason = ConnectionErrorReason.disconnect;
@@ -1356,13 +1356,20 @@ public class NetworkClient implements KafkaClient {
             return maybeUpdate(now, node);
         }
 
-        public void handleFailedGetTelemetrySubscriptionRequest(long now, Optional<KafkaException> maybeFatalException) {
-            log.warn("Failed to retrieve telemetry subscription; using existing subscription", maybeFatalException.orElse(null));
+        public void handleFailedGetTelemetrySubscriptionRequest(KafkaException maybeFatalException) {
+            if (maybeFatalException != null)
+                log.warn("Failed to retrieve telemetry subscription; using existing subscription", maybeFatalException);
+            else
+                log.warn("Failed to retrieve telemetry subscription; using existing subscription");
+
             tmi.setState(TelemetryState.subscription_needed);
         }
 
-        public void handleFailedPushTelemetryRequest(long now, Optional<KafkaException> maybeFatalException) {
-            log.warn("Failed to push telemetry", maybeFatalException.orElse(null));
+        public void handleFailedPushTelemetryRequest(KafkaException maybeFatalException) {
+            if (maybeFatalException != null)
+                log.warn("Failed to push telemetry", maybeFatalException);
+            else
+                log.warn("Failed to push telemetry", new Exception());
 
             TelemetryState state = tmi.state();
 
@@ -1374,13 +1381,13 @@ public class NetworkClient implements KafkaClient {
                 throw new IllegalTelemetryStateException(String.format("Could not transition state after failed push telemetry from state %s", state));
         }
 
-        public void handleSuccessfulGetTelemetrySubscriptionResponse(RequestHeader requestHeader, long now, GetTelemetrySubscriptionResponse response) {
+        public void handleSuccessfulGetTelemetrySubscriptionResponse(GetTelemetrySubscriptionResponse response) {
             log.trace("Successfully received GetTelemetrySubscriptionResponse: {}", response);
             GetTelemetrySubscriptionsResponseData data = response.data();
-            Set<MetricName> metricNames = TelemetryUtils.metricNames(data.requestedMetrics());
-            List<CompressionType> acceptedCompressionTypes = TelemetryUtils.acceptedCompressionTypes(data.acceptedCompressionTypes());
-            Uuid clientInstanceId = TelemetryUtils.clientInstanceId(data.clientInstanceId());
-            int pushIntervalMs = data.pushIntervalMs() > 0 ? data.pushIntervalMs() : 10000;
+            Set<MetricName> metricNames = TelemetryUtils.validateMetricNames(data.requestedMetrics());
+            List<CompressionType> acceptedCompressionTypes = TelemetryUtils.validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
+            Uuid clientInstanceId = TelemetryUtils.validateClientInstanceId(data.clientInstanceId());
+            int pushIntervalMs = TelemetryUtils.validatePushInteravlMs(data.pushIntervalMs());
 
             TelemetrySubscription telemetrySubscription = new TelemetrySubscription(time.milliseconds(),
                 data.throttleTimeMs(),
@@ -1396,7 +1403,7 @@ public class NetworkClient implements KafkaClient {
             tmi.setState(TelemetryState.push_needed);
         }
 
-        public void handleSuccessfulPushTelemetryResponse(RequestHeader requestHeader, long now, PushTelemetryResponse response) {
+        public void handleSuccessfulPushTelemetryResponse(PushTelemetryResponse response) {
             log.trace("Successfully received PushTelemetryResponse: {}", response);
 
             TelemetryState state = tmi.state();
@@ -1453,16 +1460,8 @@ public class NetworkClient implements KafkaClient {
                     throw new IllegalStateException(String.format("Telemetry state is %s but subscription is null", state));
 
                 boolean terminating = tmi.state() == TelemetryState.terminating;
-                CompressionType compressionType = CompressionType.LZ4;
-                Bytes bytes;
-
-                try {
-                    ByteBuffer buf = tmi.collectMetricsPayload(compressionType, subscription.deltaTemporality());
-                    bytes = Bytes.wrap(Utils.readBytes(buf));
-                } catch (IOException e) {
-                    // TODO: KIRK_TODO: not sure what to do here.
-                    throw new KafkaException("Couldn't serialize telemetry");
-                }
+                CompressionType compressionType = TelemetryUtils.preferredCompressionType(subscription.acceptedCompressionTypes());
+                Bytes bytes = TelemetryUtils.collectMetricsPayload(tmi, compressionType, subscription.deltaTemporality());
 
                 if (terminating)
                     tmi.setState(TelemetryState.terminating_push_in_progress);

@@ -364,9 +364,17 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     config.originalsWithPrefix(CommonClientConfigs.METRICS_CONTEXT_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time, metricsContext);
             this.producerMetrics = new KafkaProducerMetrics(metrics);
-            this.tmi = new TelemetryManagementInterface(time, clientId);
-            this.producerTelemetryRegistry = new ProducerTelemetryRegistry(tmi.metrics());
-            this.producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(tmi.metrics());
+
+            if (config.getBoolean(ProducerConfig.ENABLE_METRICS_PUSH_CONFIG)) {
+                this.tmi = new TelemetryManagementInterface(time, clientId);
+                this.producerTelemetryRegistry = new ProducerTelemetryRegistry(tmi.metrics());
+                this.producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(tmi.metrics());
+            } else {
+                this.tmi = null;
+                this.producerTelemetryRegistry = null;
+                this.producerTopicTelemetryRegistry = null;
+            }
+
             this.partitioner = config.getConfiguredInstance(
                     ProducerConfig.PARTITIONER_CLASS_CONFIG,
                     Partitioner.class,
@@ -479,7 +487,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 apiVersions,
                 throttleTimeSensor,
                 tmi,
-                new ClientTelemetryRegistry(tmi.metrics()),
+                tmi != null ? new ClientTelemetryRegistry(tmi.metrics()) : null,
                 logContext);
         short acks = configureAcks(producerConfig, log);
         return new Sender(logContext,
@@ -1190,6 +1198,11 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         return tmi != null ? tmi.clientInstanceId(timeout) : null;
     }
 
+    /** For testing **/
+    public TelemetryManagementInterface tmi() {
+        return tmi;
+    }
+
     /**
      * Get the full set of internal metrics maintained by the producer.
      */
@@ -1285,8 +1298,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
         Utils.closeQuietly(interceptors, "producer interceptors", firstException);
         Utils.closeQuietly(producerMetrics, "producer metrics wrapper", firstException);
-        // TODO: KIRK_TODO: figure out where/how to properly close telemetry metrics given that we
-        //       need to write out our terminal set of metrics when closing...
+        // TODO: TELEMETRY_TODO: figure out where/how to properly close telemetry metrics given
+        //       that we need to write out our terminal set of metrics when closing...
         Utils.closeQuietly(tmi, "client telemetry", firstException);
         Utils.closeQuietly(metrics, "producer metrics", firstException);
         Utils.closeQuietly(keySerializer, "producer keySerializer", firstException);

@@ -370,8 +370,8 @@ public class MockConsumer<K, V> implements Consumer<K, V> {
 
     @Override
     public String clientInstanceId(Duration duration) {
-        // TODO: KIRK_TODO: does this need to be anything realistic?
-        return "client-1";
+        // TODO: TELEMETRY_TODO: does this need to be anything realistic?
+        return "consumer-client-1";
     }
 
     @Override

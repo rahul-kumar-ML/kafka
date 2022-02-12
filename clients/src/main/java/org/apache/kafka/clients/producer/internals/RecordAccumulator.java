@@ -819,40 +819,53 @@ public final class RecordAccumulator {
     }
 
     private void incrementQueueBytesTelemetry(TopicPartition tp, long timestamp, byte[] key, byte[] value, Header[] headers) {
-        // TODO: KIRK_TODO: need to know the proper place to call this
-        // TODO: KIRK_TODO: need to know the proper means/place to determine the size
-        int offsetDelta = -1;
-        byte magic = apiVersions.maxUsableProduceMagic();
-        int size;
+        // TODO: TELEMETRY_TODO: need to know the proper place to call this
+        // TODO: TELEMETRY_TODO: need to know the proper means/place to determine the size
+        if (producerTelemetryRegistry != null || producerTopicTelemetryRegistry != null) {
+            int offsetDelta = -1;
+            byte magic = apiVersions.maxUsableProduceMagic();
+            int size;
 
-        if (magic > RecordBatch.MAGIC_VALUE_V1) {
-            size = DefaultRecord.sizeInBytes(offsetDelta,
-                timestamp,
-                key != null ? key.length : 0,
-                value != null ? value.length : 0,
-                headers);
-        } else {
-            size = LegacyRecord.recordSize(magic,
-                key != null ? key.length : 0,
-                value != null ? value.length : 0);
+            if (magic > RecordBatch.MAGIC_VALUE_V1) {
+                size = DefaultRecord.sizeInBytes(offsetDelta,
+                    timestamp,
+                    key != null ? key.length : 0,
+                    value != null ? value.length : 0,
+                    headers);
+            } else {
+                size = LegacyRecord.recordSize(magic,
+                    key != null ? key.length : 0,
+                    value != null ? value.length : 0);
+            }
+
+            if (producerTelemetryRegistry != null) {
+                producerTelemetryRegistry.queueBytes().record(size);
+                producerTelemetryRegistry.queueMessages().record(1);
+            }
+
+            if (producerTopicTelemetryRegistry != null) {
+                producerTopicTelemetryRegistry.queueBytes(tp, acks).record(size);
+                producerTopicTelemetryRegistry.queueCount(tp, acks).record(1);
+            }
         }
-
-        producerTelemetryRegistry.queueBytes().record(size);
-        producerTelemetryRegistry.queueMessages().record(1);
-        producerTopicTelemetryRegistry.queueBytes(tp.topic(), tp.partition(), acks).record(size);
-        producerTopicTelemetryRegistry.queueCount(tp.topic(), tp.partition(), acks).record(1);
     }
 
     private void decrementQueueBytesTelemetry(TopicPartition tp, int size) {
-        // TODO: KIRK_TODO: we need an accurate record count passed in. I don't yet know
+        // TODO: TELEMETRY_TODO: we need an accurate record count passed in. I don't yet know
         //       how to get it from the RecordBatch or MemoryRecord or ???
-        // TODO: KIRK_TODO: need to know the proper place to call this
-        // TODO: KIRK_TODO: need to know the proper means/place to determine the size
+        // TODO: TELEMETRY_TODO: need to know the proper place to call this
+        // TODO: TELEMETRY_TODO: need to know the proper means/place to determine the size
         int recordCount = 0;
-        producerTelemetryRegistry.queueBytes().record(-size);
-        producerTelemetryRegistry.queueMessages().record(-recordCount);
-        producerTopicTelemetryRegistry.queueBytes(tp.topic(), tp.partition(), acks).record(-size);
-        producerTopicTelemetryRegistry.queueCount(tp.topic(), tp.partition(), acks).record(-recordCount);
+
+        if (producerTelemetryRegistry != null) {
+            producerTelemetryRegistry.queueBytes().record(-size);
+            producerTelemetryRegistry.queueMessages().record(-recordCount);
+        }
+
+        if (producerTopicTelemetryRegistry != null) {
+            producerTopicTelemetryRegistry.queueBytes(tp, acks).record(-size);
+            producerTopicTelemetryRegistry.queueCount(tp, acks).record(-recordCount);
+        }
     }
 
     /**

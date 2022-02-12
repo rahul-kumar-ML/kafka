@@ -53,7 +53,7 @@ public class OtlpTelemetrySerializer implements TelemetrySerializer {
                     break;
 
                 case histogram:
-                    // TODO: KIRK_TRUE - we should figure out histograms at some point.
+                    // TODO: TELEMETRY_TODO: we should figure out histograms at some point.
                     Histogram histogram = Histogram.newBuilder()
                         .build();
                     builder.setHistogram(histogram);

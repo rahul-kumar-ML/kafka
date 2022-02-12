@@ -1043,8 +1043,8 @@ public class MockAdminClient extends AdminClient {
 
     @Override
     public String clientInstanceId(Duration duration) {
-        // TODO: KIRK_TODO: does this need to be anything realistic?
-        return "client-1";
+        // TODO: TELEMETRY_TODO: does this need to be anything realistic?
+        return "admin-client-1";
     }
 
     @Override
