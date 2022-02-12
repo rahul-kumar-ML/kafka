@@ -25,9 +25,10 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.Uuid;
+import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.metrics.Gauge;
 import org.apache.kafka.common.metrics.KafkaMetric;
 import org.apache.kafka.common.metrics.Measurable;
@@ -37,6 +38,7 @@ import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.record.RecordBatch;
 import org.apache.kafka.common.utils.ByteBufferOutputStream;
 import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,6 +146,23 @@ public class TelemetryUtils {
         } catch (IOException e) {
             throw new TelemetrySerializationException("Couldn't serialize telemetry", e);
         }
+    }
+
+    public static TelemetryManagementInterface maybeCreateTmi(AbstractConfig config,
+        Time time,
+        String clientId) {
+        boolean enableMetricsPush = config.getBoolean(CommonClientConfigs.ENABLE_METRICS_PUSH_CONFIG);
+        return maybeCreateTmi(enableMetricsPush, time, clientId);
+    }
+
+    public static TelemetryManagementInterface maybeCreateTmi(boolean enableMetricsPush,
+        Time time,
+        String clientId) {
+
+        if (enableMetricsPush)
+            return new TelemetryManagementInterface(time, clientId);
+        else
+            return null;
     }
 
 }

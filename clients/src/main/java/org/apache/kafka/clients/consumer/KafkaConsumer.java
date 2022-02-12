@@ -34,6 +34,7 @@ import org.apache.kafka.clients.consumer.internals.FetcherMetricsRegistry;
 import org.apache.kafka.clients.consumer.internals.KafkaConsumerMetrics;
 import org.apache.kafka.clients.consumer.internals.NoOpConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.internals.SubscriptionState;
+import org.apache.kafka.clients.telemetry.TelemetryUtils;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.KafkaException;
@@ -701,7 +702,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.defaultApiTimeoutMs = config.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG);
             this.time = Time.SYSTEM;
             this.metrics = buildMetrics(config, time, clientId);
-            this.tmi = new TelemetryManagementInterface(time, clientId);
+            this.tmi = TelemetryUtils.maybeCreateTmi(config, time, clientId);
             this.retryBackoffMs = config.getLong(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG);
 
             List<ConsumerInterceptor<K, V>> interceptorList = (List) config.getConfiguredInstances(
@@ -762,7 +763,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     apiVersions,
                     throttleTimeSensor,
                     tmi,
-                    new ClientTelemetryRegistry(tmi.metrics()),
+                    tmi != null ? new ClientTelemetryRegistry(tmi.metrics()) : null,
                     logContext);
             this.client = new ConsumerNetworkClient(
                     logContext,
@@ -848,7 +849,8 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                   long requestTimeoutMs,
                   int defaultApiTimeoutMs,
                   List<ConsumerPartitionAssignor> assignors,
-                  String groupId) {
+                  String groupId,
+                  boolean enableMetricsPush) {
         this.log = logContext.logger(getClass());
         this.clientId = clientId;
         this.coordinator = coordinator;
@@ -859,7 +861,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         this.interceptors = Objects.requireNonNull(interceptors);
         this.time = time;
         this.client = client;
-        this.tmi = new TelemetryManagementInterface(time, clientId);
+        this.tmi = TelemetryUtils.maybeCreateTmi(enableMetricsPush, time, clientId);
         this.metrics = metrics;
         this.subscriptions = subscriptions;
         this.metadata = metadata;

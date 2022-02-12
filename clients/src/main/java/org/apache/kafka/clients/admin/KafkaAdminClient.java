@@ -55,6 +55,7 @@ import org.apache.kafka.clients.admin.internals.MetadataOperationContext;
 import org.apache.kafka.clients.admin.internals.RemoveMembersFromConsumerGroupHandler;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.internals.ConsumerProtocol;
+import org.apache.kafka.clients.telemetry.TelemetryUtils;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.ConsumerGroupState;
 import org.apache.kafka.common.ElectionType;
@@ -513,7 +514,7 @@ public class KafkaAdminClient extends AdminClient {
             channelBuilder = ClientUtils.createChannelBuilder(config, time, logContext);
             selector = new Selector(config.getLong(AdminClientConfig.CONNECTIONS_MAX_IDLE_MS_CONFIG),
                     metrics, time, metricGrpPrefix, channelBuilder, logContext);
-            TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId);
+            TelemetryManagementInterface tmi = TelemetryUtils.maybeCreateTmi(config, time, clientId);
             networkClient = new NetworkClient(
                 metadataManager.updater(),
                 null,
@@ -532,7 +533,7 @@ public class KafkaAdminClient extends AdminClient {
                 apiVersions,
                 null,
                 tmi,
-                new ClientTelemetryRegistry(tmi.metrics()),
+                tmi != null ? new ClientTelemetryRegistry(tmi.metrics()) : null,
                 logContext,
                 (hostResolver == null) ? new DefaultHostResolver() : hostResolver);
             return new KafkaAdminClient(config, clientId, time, metadataManager, metrics, networkClient,
@@ -556,7 +557,7 @@ public class KafkaAdminClient extends AdminClient {
         try {
             metrics = new Metrics(new MetricConfig(), new LinkedList<>(), time);
             LogContext logContext = createLogContext(clientId);
-            TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId);
+            TelemetryManagementInterface tmi = TelemetryUtils.maybeCreateTmi(config, time, clientId);
             return new KafkaAdminClient(config, clientId, time, metadataManager, metrics,
                 client, null, logContext, tmi);
         } catch (Throwable exc) {

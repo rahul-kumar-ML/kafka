@@ -38,6 +38,7 @@ import org.apache.kafka.clients.producer.internals.RecordAccumulator;
 import org.apache.kafka.clients.producer.internals.Sender;
 import org.apache.kafka.clients.producer.internals.TransactionManager;
 import org.apache.kafka.clients.producer.internals.TransactionalRequestResult;
+import org.apache.kafka.clients.telemetry.TelemetryUtils;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Metric;
@@ -364,13 +365,12 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     config.originalsWithPrefix(CommonClientConfigs.METRICS_CONTEXT_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time, metricsContext);
             this.producerMetrics = new KafkaProducerMetrics(metrics);
+            this.tmi = TelemetryUtils.maybeCreateTmi(config, time, clientId);
 
-            if (config.getBoolean(ProducerConfig.ENABLE_METRICS_PUSH_CONFIG)) {
-                this.tmi = new TelemetryManagementInterface(time, clientId);
+            if (this.tmi != null) {
                 this.producerTelemetryRegistry = new ProducerTelemetryRegistry(tmi.metrics());
                 this.producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(tmi.metrics());
             } else {
-                this.tmi = null;
                 this.producerTelemetryRegistry = null;
                 this.producerTopicTelemetryRegistry = null;
             }
