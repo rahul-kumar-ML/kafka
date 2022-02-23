@@ -87,8 +87,8 @@ public final class RecordAccumulator {
     private final TransactionManager transactionManager;
     private long nextBatchExpiryTimeMs = Long.MAX_VALUE; // the earliest time (absolute) a batch will expire.
     private final short acks;
-    private final ProducerTelemetryRegistry producerTelemetryRegistry;
-    private final ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry;
+    private final ProducerSensorRegistry producerSensorRegistry;
+    private final ProducerTopicSensorRegistry producerTopicSensorRegistry;
 
     /**
      * Create a new record accumulator
@@ -120,8 +120,8 @@ public final class RecordAccumulator {
                              TransactionManager transactionManager,
                              BufferPool bufferPool,
                              short acks,
-                             ProducerTelemetryRegistry producerTelemetryRegistry,
-                             ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry) {
+                             ProducerSensorRegistry producerSensorRegistry,
+                             ProducerTopicSensorRegistry producerTopicSensorRegistry) {
         this.log = logContext.logger(RecordAccumulator.class);
         this.drainIndex = 0;
         this.closed = false;
@@ -140,8 +140,8 @@ public final class RecordAccumulator {
         this.apiVersions = apiVersions;
         this.transactionManager = transactionManager;
         this.acks = acks;
-        this.producerTelemetryRegistry = producerTelemetryRegistry;
-        this.producerTopicTelemetryRegistry = producerTopicTelemetryRegistry;
+        this.producerSensorRegistry = producerSensorRegistry;
+        this.producerTopicSensorRegistry = producerTopicSensorRegistry;
         registerMetrics(metrics, metricGrpName);
     }
 
@@ -821,7 +821,7 @@ public final class RecordAccumulator {
     private void incrementQueueBytesTelemetry(TopicPartition tp, long timestamp, byte[] key, byte[] value, Header[] headers) {
         // TODO: TELEMETRY_TODO: need to know the proper place to call this
         // TODO: TELEMETRY_TODO: need to know the proper means/place to determine the size
-        if (producerTelemetryRegistry != null || producerTopicTelemetryRegistry != null) {
+        if (producerSensorRegistry != null || producerTopicSensorRegistry != null) {
             int offsetDelta = -1;
             byte magic = apiVersions.maxUsableProduceMagic();
             int size;
@@ -838,14 +838,14 @@ public final class RecordAccumulator {
                     value != null ? value.length : 0);
             }
 
-            if (producerTelemetryRegistry != null) {
-                producerTelemetryRegistry.queueBytes().record(size);
-                producerTelemetryRegistry.queueMessages().record(1);
+            if (producerSensorRegistry != null) {
+                producerSensorRegistry.queueBytes().record(size);
+                producerSensorRegistry.queueMessages().record(1);
             }
 
-            if (producerTopicTelemetryRegistry != null) {
-                producerTopicTelemetryRegistry.queueBytes(tp, acks).record(size);
-                producerTopicTelemetryRegistry.queueCount(tp, acks).record(1);
+            if (producerTopicSensorRegistry != null) {
+                producerTopicSensorRegistry.queueBytes(tp, acks).record(size);
+                producerTopicSensorRegistry.queueCount(tp, acks).record(1);
             }
         }
     }
@@ -857,14 +857,14 @@ public final class RecordAccumulator {
         // TODO: TELEMETRY_TODO: need to know the proper means/place to determine the size
         int recordCount = 0;
 
-        if (producerTelemetryRegistry != null) {
-            producerTelemetryRegistry.queueBytes().record(-size);
-            producerTelemetryRegistry.queueMessages().record(-recordCount);
+        if (producerSensorRegistry != null) {
+            producerSensorRegistry.queueBytes().record(-size);
+            producerSensorRegistry.queueMessages().record(-recordCount);
         }
 
-        if (producerTopicTelemetryRegistry != null) {
-            producerTopicTelemetryRegistry.queueBytes(tp, acks).record(-size);
-            producerTopicTelemetryRegistry.queueCount(tp, acks).record(-recordCount);
+        if (producerTopicSensorRegistry != null) {
+            producerTopicSensorRegistry.queueBytes(tp, acks).record(-size);
+            producerTopicSensorRegistry.queueCount(tp, acks).record(-recordCount);
         }
     }
 

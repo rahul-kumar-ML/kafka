@@ -16,9 +16,9 @@
  */
 package org.apache.kafka.clients;
 
-import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
-import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry.ConnectionErrorReason;
-import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry.RequestErrorReason;
+import org.apache.kafka.clients.telemetry.ClientSensorRegistry;
+import org.apache.kafka.clients.telemetry.ClientSensorRegistry.ConnectionErrorReason;
+import org.apache.kafka.clients.telemetry.ClientSensorRegistry.RequestErrorReason;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
@@ -132,7 +132,7 @@ public class NetworkClient implements KafkaClient {
 
     private final Sensor throttleTimeSensor;
 
-    private final ClientTelemetryRegistry clientTelemetryRegistry;
+    private final ClientSensorRegistry clientSensorRegistry;
 
     private final AtomicReference<State> state;
 
@@ -189,7 +189,7 @@ public class NetworkClient implements KafkaClient {
                          ApiVersions apiVersions,
                          Sensor throttleTimeSensor,
                          TelemetryManagementInterface tmi,
-                         ClientTelemetryRegistry clientTelemetryRegistry,
+                         ClientSensorRegistry clientSensorRegistry,
                          LogContext logContext) {
         this(null,
              metadata,
@@ -208,7 +208,7 @@ public class NetworkClient implements KafkaClient {
              apiVersions,
              throttleTimeSensor,
              tmi,
-             clientTelemetryRegistry,
+             clientSensorRegistry,
              logContext,
              new DefaultHostResolver());
     }
@@ -267,7 +267,7 @@ public class NetworkClient implements KafkaClient {
                          ApiVersions apiVersions,
                          Sensor throttleTimeSensor,
                          TelemetryManagementInterface tmi,
-                         ClientTelemetryRegistry clientTelemetryRegistry,
+                         ClientSensorRegistry clientSensorRegistry,
                          LogContext logContext,
                          HostResolver hostResolver) {
         /* It would be better if we could pass `DefaultMetadataUpdater` from the public constructor, but it's not
@@ -297,7 +297,7 @@ public class NetworkClient implements KafkaClient {
         this.discoverBrokerVersions = discoverBrokerVersions;
         this.apiVersions = apiVersions;
         this.throttleTimeSensor = throttleTimeSensor;
-        this.clientTelemetryRegistry = clientTelemetryRegistry;
+        this.clientSensorRegistry = clientSensorRegistry;
         this.log = logContext.logger(NetworkClient.class);
         this.state = new AtomicReference<>(State.ACTIVE);
         this.telemetryUpdater = tmi != null ? new TelemetryUpdater(tmi) : null;
@@ -391,8 +391,8 @@ public class NetworkClient implements KafkaClient {
      */
     @Override
     public void close(String nodeId) {
-        if (clientTelemetryRegistry != null)
-            clientTelemetryRegistry.connectionErrors(ConnectionErrorReason.close).record();
+        if (clientSensorRegistry != null)
+            clientSensorRegistry.connectionErrors(ConnectionErrorReason.close).record();
 
         log.info("Client requested connection close from node {}", nodeId);
         selector.close(nodeId);
@@ -1025,41 +1025,41 @@ public class NetworkClient implements KafkaClient {
     }
 
     private void incrementQueueCountTelemetry(InFlightRequest inFlightRequest) {
-        if (clientTelemetryRegistry != null) {
+        if (clientSensorRegistry != null) {
             String brokerId = inFlightRequest.destination;
-            Sensor s = clientTelemetryRegistry.requestQueueCount(brokerId);
+            Sensor s = clientSensorRegistry.requestQueueCount(brokerId);
             s.record(1);
         }
     }
 
     private void decrementQueueCountTelemetry(InFlightRequest inFlightRequest) {
-        if (clientTelemetryRegistry != null) {
+        if (clientSensorRegistry != null) {
             String brokerId = inFlightRequest.destination;
-            Sensor s = clientTelemetryRegistry.requestQueueCount(brokerId);
+            Sensor s = clientSensorRegistry.requestQueueCount(brokerId);
             s.record(-1);
         }
     }
 
     private void incrementRequestSuccessTelemetry(InFlightRequest inFlightRequest) {
-        if (clientTelemetryRegistry != null) {
+        if (clientSensorRegistry != null) {
             String brokerId = inFlightRequest.destination;
             String requestType = inFlightRequest.request.apiKey().messageType.name;
-            Sensor s = clientTelemetryRegistry.requestSuccess(brokerId, requestType);
+            Sensor s = clientSensorRegistry.requestSuccess(brokerId, requestType);
             s.record();
         }
     }
 
     private void incrementRequestErrorsTelemetry(String brokerId, RequestErrorReason reason) {
-        if (clientTelemetryRegistry != null) {
+        if (clientSensorRegistry != null) {
             // TODO: TELEMETRY_TODO: I don't have the request type anywhere readily available...
             String requestType = "requestType TBA";
-            Sensor s = clientTelemetryRegistry.requestErrors(brokerId, requestType, reason);
+            Sensor s = clientSensorRegistry.requestErrors(brokerId, requestType, reason);
             s.record();
         }
     }
 
     private void incrementConnectionErrorsTelemetry(Errors errors) {
-        if (clientTelemetryRegistry != null) {
+        if (clientSensorRegistry != null) {
             ConnectionErrorReason reason = null;
 
             // TODO: TELEMETRY_TODO: there's no way this mapping is correct...
@@ -1089,8 +1089,8 @@ public class NetworkClient implements KafkaClient {
     }
 
     private void incrementConnectionErrorsTelemetry(ConnectionErrorReason reason) {
-        if (clientTelemetryRegistry != null) {
-            Sensor s = clientTelemetryRegistry.connectionErrors(reason);
+        if (clientSensorRegistry != null) {
+            Sensor s = clientSensorRegistry.connectionErrors(reason);
             s.record();
         }
     }
@@ -1111,9 +1111,9 @@ public class NetworkClient implements KafkaClient {
                     this.socketSendBuffer,
                     this.socketReceiveBuffer);
 
-            if (clientTelemetryRegistry != null) {
-                clientTelemetryRegistry.connectionCreations(nodeConnectionId).record();
-                clientTelemetryRegistry.connectionCount().record(1);
+            if (clientSensorRegistry != null) {
+                clientSensorRegistry.connectionCreations(nodeConnectionId).record();
+                clientSensorRegistry.connectionCount().record(1);
             }
         } catch (IOException e) {
             log.warn("Error connecting to node {}", node, e);
@@ -1209,8 +1209,8 @@ public class NetworkClient implements KafkaClient {
             // The disconnect may be the result of stale metadata, so request an update
             metadata.requestUpdate();
 
-            if (clientTelemetryRegistry != null)
-                clientTelemetryRegistry.connectionCount().record(-1);
+            if (clientSensorRegistry != null)
+                clientSensorRegistry.connectionCount().record(-1);
         }
 
         @Override

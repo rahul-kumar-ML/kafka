@@ -21,7 +21,7 @@ import org.apache.kafka.clients.ClientUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.NetworkClient;
-import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.ClientSensorRegistry;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -32,8 +32,8 @@ import org.apache.kafka.clients.producer.internals.KafkaProducerMetrics;
 import org.apache.kafka.clients.producer.internals.ProducerInterceptors;
 import org.apache.kafka.clients.producer.internals.ProducerMetadata;
 import org.apache.kafka.clients.producer.internals.ProducerMetrics;
-import org.apache.kafka.clients.producer.internals.ProducerTelemetryRegistry;
-import org.apache.kafka.clients.producer.internals.ProducerTopicTelemetryRegistry;
+import org.apache.kafka.clients.producer.internals.ProducerSensorRegistry;
+import org.apache.kafka.clients.producer.internals.ProducerTopicSensorRegistry;
 import org.apache.kafka.clients.producer.internals.RecordAccumulator;
 import org.apache.kafka.clients.producer.internals.Sender;
 import org.apache.kafka.clients.producer.internals.TransactionManager;
@@ -263,8 +263,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final TransactionManager transactionManager;
 
     private final TelemetryManagementInterface tmi;
-    private final ProducerTelemetryRegistry producerTelemetryRegistry;
-    private final ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry;
+    private final ProducerSensorRegistry producerSensorRegistry;
+    private final ProducerTopicSensorRegistry producerTopicSensorRegistry;
 
     /**
      * A producer is instantiated by providing a set of key-value pairs as configuration. Valid configuration strings
@@ -367,11 +367,11 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             this.tmi = TelemetryManagementInterface.maybeCreate(config, time, clientId);
 
             if (this.tmi != null) {
-                this.producerTelemetryRegistry = new ProducerTelemetryRegistry(tmi.metrics());
-                this.producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(tmi.metrics());
+                this.producerSensorRegistry = new ProducerSensorRegistry(tmi.metrics());
+                this.producerTopicSensorRegistry = new ProducerTopicSensorRegistry(tmi.metrics());
             } else {
-                this.producerTelemetryRegistry = null;
-                this.producerTopicTelemetryRegistry = null;
+                this.producerSensorRegistry = null;
+                this.producerTopicSensorRegistry = null;
             }
 
             this.partitioner = config.getConfiguredInstance(
@@ -428,8 +428,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     transactionManager,
                     new BufferPool(this.totalMemorySize, config.getInt(ProducerConfig.BATCH_SIZE_CONFIG), metrics, time, PRODUCER_METRIC_GROUP_NAME),
                     configureAcks(config, log),
-                    producerTelemetryRegistry,
-                    producerTopicTelemetryRegistry);
+                producerSensorRegistry,
+                producerTopicSensorRegistry);
 
             List<InetSocketAddress> addresses = ClientUtils.parseAndValidateAddresses(
                     config.getList(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG),
@@ -486,7 +486,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 apiVersions,
                 throttleTimeSensor,
                 tmi,
-                tmi != null ? new ClientTelemetryRegistry(tmi.metrics()) : null,
+                tmi != null ? new ClientSensorRegistry(tmi.metrics()) : null,
                 logContext);
         short acks = configureAcks(producerConfig, log);
         return new Sender(logContext,
@@ -498,8 +498,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 acks,
                 producerConfig.getInt(ProducerConfig.RETRIES_CONFIG),
                 metricsRegistry.senderMetrics,
-                producerTelemetryRegistry,
-                producerTopicTelemetryRegistry,
+            producerSensorRegistry,
+            producerTopicSensorRegistry,
                 time,
                 requestTimeoutMs,
                 producerConfig.getLong(ProducerConfig.RETRY_BACKOFF_MS_CONFIG),

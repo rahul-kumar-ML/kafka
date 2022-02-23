@@ -24,7 +24,7 @@ import org.apache.kafka.clients.FetchSessionHandler;
 import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.MockClient;
 import org.apache.kafka.clients.NetworkClient;
-import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.ClientSensorRegistry;
 import org.apache.kafka.clients.NodeApiVersions;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -2473,7 +2473,7 @@ public class FetcherTest {
         TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId);
         NetworkClient client = new NetworkClient(selector, metadata, clientId, Integer.MAX_VALUE,
                 1000, 1000, 64 * 1024, 64 * 1024, 1000, 10 * 1000, 127 * 1000,
-                time, true, new ApiVersions(), throttleTimeSensor, tmi, new ClientTelemetryRegistry(tmi.metrics()), new LogContext());
+                time, true, new ApiVersions(), throttleTimeSensor, tmi, new ClientSensorRegistry(tmi.metrics()), new LogContext());
 
         ApiVersionsResponse apiVersionsResponse = ApiVersionsResponse.defaultApiVersionsResponse(
             400, ApiMessageType.ListenerType.ZK_BROKER);

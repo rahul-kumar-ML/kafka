@@ -483,7 +483,7 @@ public class TelemetryManagementInterface implements Closeable {
         return String.valueOf(error);
     }
 
-    public TelemetryState validateTransition(TelemetryState oldState, TelemetryState newState) {
+    public static TelemetryState validateTransition(TelemetryState oldState, TelemetryState newState) {
         switch (oldState) {
             case initialized:
                 // If we're just starting up, the happy path is to next request a subscription.

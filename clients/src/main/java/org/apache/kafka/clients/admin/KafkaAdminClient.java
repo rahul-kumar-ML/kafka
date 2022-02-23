@@ -20,7 +20,7 @@ package org.apache.kafka.clients.admin;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientRequest;
 import org.apache.kafka.clients.ClientResponse;
-import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.ClientSensorRegistry;
 import org.apache.kafka.clients.ClientUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.DefaultHostResolver;
@@ -532,7 +532,7 @@ public class KafkaAdminClient extends AdminClient {
                 apiVersions,
                 null,
                 tmi,
-                tmi != null ? new ClientTelemetryRegistry(tmi.metrics()) : null,
+                tmi != null ? new ClientSensorRegistry(tmi.metrics()) : null,
                 logContext,
                 (hostResolver == null) ? new DefaultHostResolver() : hostResolver);
             return new KafkaAdminClient(config, clientId, time, metadataManager, metrics, networkClient,

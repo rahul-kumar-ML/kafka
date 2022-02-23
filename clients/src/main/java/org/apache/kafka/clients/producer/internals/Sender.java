@@ -131,8 +131,8 @@ public class Sender implements Runnable {
                   short acks,
                   int retries,
                   SenderMetricsRegistry metricsRegistry,
-                  ProducerTelemetryRegistry producerTelemetryRegistry,
-                  ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry,
+                  ProducerSensorRegistry producerSensorRegistry,
+                  ProducerTopicSensorRegistry producerTopicSensorRegistry,
                   Time time,
                   int requestTimeoutMs,
                   long retryBackoffMs,
@@ -148,7 +148,8 @@ public class Sender implements Runnable {
         this.acks = acks;
         this.retries = retries;
         this.time = time;
-        this.sensors = new SenderMetrics(metricsRegistry, acks, producerTelemetryRegistry, producerTopicTelemetryRegistry, metadata, client, time);
+        this.sensors = new SenderMetrics(metricsRegistry, acks, producerSensorRegistry,
+            producerTopicSensorRegistry, metadata, client, time);
         this.requestTimeoutMs = requestTimeoutMs;
         this.retryBackoffMs = retryBackoffMs;
         this.apiVersions = apiVersions;
@@ -874,21 +875,21 @@ public class Sender implements Runnable {
         public final Sensor batchSplitSensor;
         private final SenderMetricsRegistry metrics;
         private final short acks;
-        private final ProducerTelemetryRegistry producerTelemetryRegistry;
-        private final ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry;
+        private final ProducerSensorRegistry producerSensorRegistry;
+        private final ProducerTopicSensorRegistry producerTopicSensorRegistry;
         private final Time time;
 
         public SenderMetrics(SenderMetricsRegistry metrics,
             short acks,
-            ProducerTelemetryRegistry producerTelemetryRegistry,
-            ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry,
+            ProducerSensorRegistry producerSensorRegistry,
+            ProducerTopicSensorRegistry producerTopicSensorRegistry,
             Metadata metadata,
             KafkaClient client,
             Time time) {
             this.metrics = metrics;
             this.acks = acks;
-            this.producerTelemetryRegistry = producerTelemetryRegistry;
-            this.producerTopicTelemetryRegistry = producerTopicTelemetryRegistry;
+            this.producerSensorRegistry = producerSensorRegistry;
+            this.producerTopicSensorRegistry = producerTopicSensorRegistry;
             this.time = time;
 
             this.batchSizeSensor = metrics.sensor("batch-size");
@@ -990,13 +991,13 @@ public class Sender implements Runnable {
                     Sensor topicCompressionRate = Objects.requireNonNull(this.metrics.getSensor(topicCompressionRateName));
                     topicCompressionRate.record(batch.compressionRatio());
 
-                    if (producerTelemetryRegistry != null) {
-                        producerTelemetryRegistry.recordCount().record(batch.recordCount);
-                        producerTelemetryRegistry.recordBytes().record(batch.estimatedSizeInBytes());
+                    if (producerSensorRegistry != null) {
+                        producerSensorRegistry.recordCount().record(batch.recordCount);
+                        producerSensorRegistry.recordBytes().record(batch.estimatedSizeInBytes());
                     }
 
-                    if (producerTopicTelemetryRegistry != null)
-                        producerTopicTelemetryRegistry.recordSuccess(batch.topicPartition, acks).record(batch.recordCount);
+                    if (producerTopicSensorRegistry != null)
+                        producerTopicSensorRegistry.recordSuccess(batch.topicPartition, acks).record(batch.recordCount);
 
                     // global metrics
                     this.batchSizeSensor.record(batch.estimatedSizeInBytes(), now);
@@ -1017,8 +1018,8 @@ public class Sender implements Runnable {
             if (topicRetrySensor != null)
                 topicRetrySensor.record(count, now);
 
-            if (producerTopicTelemetryRegistry != null)
-                producerTopicTelemetryRegistry.recordRetries(topicPartition, acks).record(count);
+            if (producerTopicSensorRegistry != null)
+                producerTopicSensorRegistry.recordRetries(topicPartition, acks).record(count);
         }
 
         public void recordErrors(TopicPartition topicPartition, int count, Throwable error) {
@@ -1029,9 +1030,9 @@ public class Sender implements Runnable {
             if (topicErrorSensor != null)
                 topicErrorSensor.record(count, now);
 
-            if (producerTopicTelemetryRegistry != null) {
+            if (producerTopicSensorRegistry != null) {
                 String reason = TelemetryManagementInterface.convertErrorToReason(error);
-                producerTopicTelemetryRegistry.recordFailures(topicPartition, acks, reason).record(count);
+                producerTopicSensorRegistry.recordFailures(topicPartition, acks, reason).record(count);
             }
         }
 

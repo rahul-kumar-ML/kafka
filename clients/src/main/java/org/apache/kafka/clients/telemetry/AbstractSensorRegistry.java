@@ -23,13 +23,20 @@ import java.util.Set;
 import java.util.function.Supplier;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.MetricNameTemplate;
-import org.apache.kafka.common.metrics.Measurable;
 import org.apache.kafka.common.metrics.MeasurableStat;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.metrics.stats.CumulativeSum;
 
-public abstract class AbstractClientTelemetryRegistry {
+/**
+ * This class provides basic utility methods that client telemetry subclasses can leverage
+ * to create the various {@link Sensor}s that it exposes.
+ *
+ * A subclass will typically provide public methods to expose the sensors that the class
+ * manages for use by the rest of the client layer to access those sensors for manipulation.
+ */
+
+public abstract class AbstractSensorRegistry {
 
     protected final Metrics metrics;
 
@@ -37,34 +44,11 @@ public abstract class AbstractClientTelemetryRegistry {
 
     protected final List<MetricNameTemplate> allTemplates;
 
-    protected AbstractClientTelemetryRegistry(Metrics metrics) {
+    protected AbstractSensorRegistry(Metrics metrics) {
         this.metrics = metrics;
         this.tags = this.metrics.config().tags().keySet();
         this.allTemplates = new ArrayList<>();
     }
-
-//    public List<MetricNameTemplate> allTemplates() {
-//        return allTemplates;
-//    }
-
-    public Sensor sensor(String name) {
-        return metrics.sensor(name);
-    }
-
-    public void addMetric(MetricName m, Measurable measurable) {
-        metrics.addMetric(m, measurable);
-    }
-
-//    public Sensor getSensor(String name) {
-//        return metrics.getSensor(name);
-//    }
-
-//    protected Sensor sensor(MetricNameTemplate mnt,
-//        Map<String, String> tags,
-//        Supplier<MeasurableStat> measurableStatSupplier) {
-//        MetricName mn = metrics.metricInstance(mnt, tags);
-//        return sensor(mn, measurableStatSupplier);
-//    }
 
     protected Sensor gaugeSensor(MetricName mn) {
         // TODO: TELEMETRY_TODO: need to implement gauges...
@@ -107,7 +91,7 @@ public abstract class AbstractClientTelemetryRegistry {
     }
 
     private Sensor sensor(MetricName mn, Supplier<MeasurableStat> measurableStatSupplier) {
-        Sensor sensor = sensor(mn.name());
+        Sensor sensor = metrics.sensor(mn.name());
         sensor.add(mn, measurableStatSupplier.get());
         return sensor;
     }

@@ -17,13 +17,19 @@
 package org.apache.kafka.clients.producer.internals;
 
 import java.util.Set;
-import org.apache.kafka.clients.telemetry.AbstractClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.AbstractSensorRegistry;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 
-public class ProducerTelemetryRegistry extends AbstractClientTelemetryRegistry {
+/**
+ * A sensor registry that exposes {@link Sensor}s used to record the producer-level metrics.
+ *
+ * @see ProducerTopicSensorRegistry for details on the topic-level sensors.
+ */
+
+public class ProducerSensorRegistry extends AbstractSensorRegistry {
 
     private static final String GROUP_NAME = "producer-telemetry";
 
@@ -39,7 +45,7 @@ public class ProducerTelemetryRegistry extends AbstractClientTelemetryRegistry {
 
     private final MetricName queueMessages;
 
-    public ProducerTelemetryRegistry(Metrics metrics) {
+    public ProducerSensorRegistry(Metrics metrics) {
         super(metrics);
 
         this.recordBytes = createMetricName("record.bytes",

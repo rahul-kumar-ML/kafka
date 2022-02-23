@@ -26,7 +26,11 @@ import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 
-public class ClientTelemetryRegistry extends AbstractClientTelemetryRegistry {
+/**
+ * A sensor registry that exposes {@link Sensor}s used to record the client instance-level metrics.
+ */
+
+public class ClientSensorRegistry extends AbstractSensorRegistry {
 
     public enum ConnectionErrorReason {
         auth, close, disconnect, timeout, TLS
@@ -62,7 +66,7 @@ public class ClientTelemetryRegistry extends AbstractClientTelemetryRegistry {
 
     private final MetricName ioWaitTime;
 
-    public ClientTelemetryRegistry(Metrics metrics) {
+    public ClientSensorRegistry(Metrics metrics) {
         super(metrics);
 
         Set<String> brokerIdTags = new LinkedHashSet<>(tags);

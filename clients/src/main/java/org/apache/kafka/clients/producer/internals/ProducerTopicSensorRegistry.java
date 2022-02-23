@@ -20,13 +20,20 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
-import org.apache.kafka.clients.telemetry.AbstractClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.AbstractSensorRegistry;
 import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 
-public class ProducerTopicTelemetryRegistry extends AbstractClientTelemetryRegistry {
+/**
+ * A sensor registry that exposes {@link Sensor}s used to record the topic-level metrics for the
+ * producer.
+ *
+ * @see ProducerSensorRegistry for details on the producer-level sensors.
+ */
+
+public class ProducerTopicSensorRegistry extends AbstractSensorRegistry {
 
     private static final String GROUP_NAME = "producer-topic-telemetry";
 
@@ -52,7 +59,7 @@ public class ProducerTopicTelemetryRegistry extends AbstractClientTelemetryRegis
 
     private final MetricNameTemplate recordSuccess;
 
-    public ProducerTopicTelemetryRegistry(Metrics metrics) {
+    public ProducerTopicSensorRegistry(Metrics metrics) {
         super(metrics);
 
         Set<String> topicPartitionAcksTags = new LinkedHashSet<>(tags);

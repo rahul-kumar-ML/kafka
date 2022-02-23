@@ -22,7 +22,7 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.GroupRebalanceConfig;
 import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.NetworkClient;
-import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.ClientSensorRegistry;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.consumer.internals.ConsumerCoordinator;
 import org.apache.kafka.clients.consumer.internals.ConsumerInterceptors;
@@ -762,7 +762,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     apiVersions,
                     throttleTimeSensor,
                     tmi,
-                    tmi != null ? new ClientTelemetryRegistry(tmi.metrics()) : null,
+                    tmi != null ? new ClientSensorRegistry(tmi.metrics()) : null,
                     logContext);
             this.client = new ConsumerNetworkClient(
                     logContext,

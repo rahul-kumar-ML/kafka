@@ -20,6 +20,13 @@ import java.util.HashMap;
 import java.util.Map;
 import org.apache.kafka.common.MetricName;
 
+/**
+ * <code>DeltaValueStore</code> is a simple encapsulation that stores a {@link Long} value for a
+ * {@link MetricName}. The value at push cycle P(n) is stored in the table. At push cycle P(n+1),
+ * the current value is stored and the value at P(n) is returned. Thus, the difference between the
+ * values P(n+1)-P(n) can be determined.
+ */
+
 public class DeltaValueStore {
 
     private final Map<MetricName, Long> previousValuesMap;

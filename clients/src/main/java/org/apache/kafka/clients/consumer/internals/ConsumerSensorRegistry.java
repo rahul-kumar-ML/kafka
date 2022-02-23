@@ -20,13 +20,13 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
-import org.apache.kafka.clients.telemetry.AbstractClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.AbstractSensorRegistry;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 
-public class ConsumerTelemetryRegistry extends AbstractClientTelemetryRegistry {
+public class ConsumerSensorRegistry extends AbstractSensorRegistry {
 
     private static final String GROUP_NAME = "consumer-telemetry";
 
@@ -64,7 +64,7 @@ public class ConsumerTelemetryRegistry extends AbstractClientTelemetryRegistry {
 
     private final MetricName fetchFailures;
 
-    public ConsumerTelemetryRegistry(Metrics metrics) {
+    public ConsumerSensorRegistry(Metrics metrics) {
         super(metrics);
 
         Set<String> errorTags = new LinkedHashSet<>(tags);

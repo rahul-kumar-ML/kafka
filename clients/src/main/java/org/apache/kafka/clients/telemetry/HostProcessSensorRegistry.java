@@ -20,22 +20,25 @@ import java.util.Set;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.metrics.Metrics;
+import org.apache.kafka.common.metrics.Sensor;
 
-public class ClientHostProcessTelemetryRegistry extends AbstractClientTelemetryRegistry {
+/**
+ * A sensor registry that exposes {@link Sensor}s used to record the client host process metrics.
+ */
 
-    private final static String GROUP_NAME = "client-host-process-telemetry";
+public class HostProcessSensorRegistry extends AbstractSensorRegistry {
 
-    public final MetricName memoryBytes;
+    private final static String GROUP_NAME = "host-process-telemetry";
 
-    public final MetricName cpuUserTime;
+    private final MetricName memoryBytes;
 
-    public final MetricName cpuSystemTime;
+    private final MetricName cpuUserTime;
 
-    public final MetricName ioWaitTime;
+    private final MetricName cpuSystemTime;
 
-    public final MetricName pid;
+    private final MetricName pid;
 
-    public ClientHostProcessTelemetryRegistry(Metrics metrics) {
+    public HostProcessSensorRegistry(Metrics metrics) {
         super(metrics);
 
         this.memoryBytes = createMetricName("memory.bytes",
@@ -44,10 +47,24 @@ public class ClientHostProcessTelemetryRegistry extends AbstractClientTelemetryR
             "User CPU time used (seconds).");
         this.cpuSystemTime = createMetricName("cpu.system.time",
             "System CPU time used (seconds).");
-        this.ioWaitTime = createMetricName("io.wait.time",
-            "IO wait time (seconds).");
         this.pid = createMetricName("pid",
             "The process id. Can be used, in conjunction with the client host name to map multiple client instances to the same process.");
+    }
+
+    public Sensor memoryBytes() {
+        return gaugeSensor(memoryBytes);
+    }
+
+    public Sensor cpuUserTime() {
+        return sumSensor(cpuUserTime);
+    }
+
+    public Sensor cpuSystemTime() {
+        return sumSensor(cpuSystemTime);
+    }
+
+    public Sensor pid() {
+        return sumSensor(pid);
     }
 
     private MetricName createMetricName(String unqualifiedName, String description) {

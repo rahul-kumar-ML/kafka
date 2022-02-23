@@ -21,7 +21,7 @@ import org.apache.kafka.clients.ClientRequest;
 import org.apache.kafka.clients.ClientResponse;
 import org.apache.kafka.clients.MockClient;
 import org.apache.kafka.clients.NetworkClient;
-import org.apache.kafka.clients.telemetry.ClientTelemetryRegistry;
+import org.apache.kafka.clients.telemetry.ClientSensorRegistry;
 import org.apache.kafka.clients.NodeApiVersions;
 import org.apache.kafka.clients.telemetry.TelemetryManagementInterface;
 import org.apache.kafka.clients.producer.Callback;
@@ -294,7 +294,7 @@ public class SenderTest {
         TelemetryManagementInterface tmi = new TelemetryManagementInterface(time, clientId);
         NetworkClient client = new NetworkClient(selector, metadata, clientId, Integer.MAX_VALUE,
                 1000, 1000, 64 * 1024, 64 * 1024, 1000, 10 * 1000, 127 * 1000,
-                time, true, new ApiVersions(), throttleTimeSensor, tmi, new ClientTelemetryRegistry(tmi.metrics()), logContext);
+                time, true, new ApiVersions(), throttleTimeSensor, tmi, new ClientSensorRegistry(tmi.metrics()), logContext);
 
         ApiVersionsResponse apiVersionsResponse = ApiVersionsResponse.defaultApiVersionsResponse(
             400, ApiMessageType.ListenerType.ZK_BROKER);
@@ -340,10 +340,10 @@ public class SenderTest {
         Map<String, String> clientTags = Collections.singletonMap("client-id", "clientA");
         metrics = new Metrics(new MetricConfig().tags(clientTags));
         SenderMetricsRegistry metricsRegistry = new SenderMetricsRegistry(metrics);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(metrics);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(metrics);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(metrics);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(metrics);
         Sender sender = new Sender(logContext, client, metadata, this.accumulator, false, MAX_REQUEST_SIZE, ACKS_ALL,
-                1, metricsRegistry, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, null, apiVersions);
+                1, metricsRegistry, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, null, apiVersions);
 
         // Append a message so that topic metrics are created
         appendToAccumulator(tp0, 0L, "key", "value");
@@ -369,11 +369,11 @@ public class SenderTest {
         int maxRetries = 1;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
         try {
             Sender sender = new Sender(logContext, client, metadata, this.accumulator, false, MAX_REQUEST_SIZE, ACKS_ALL,
-                    maxRetries, senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, null, apiVersions);
+                    maxRetries, senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, null, apiVersions);
             // do a successful retry
             Future<RecordMetadata> future = appendToAccumulator(tp0, 0L, "key", "value");
             sender.runOnce(); // connect
@@ -428,12 +428,12 @@ public class SenderTest {
         int maxRetries = 1;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
 
         try {
             Sender sender = new Sender(logContext, client, metadata, this.accumulator, true, MAX_REQUEST_SIZE, ACKS_ALL, maxRetries,
-                    senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, null, apiVersions);
+                    senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, null, apiVersions);
             // Create a two broker cluster, with partition 0 on broker 0 and partition 1 on broker 1
             MetadataResponse metadataUpdate1 = RequestTestUtils.metadataUpdateWith(2, Collections.singletonMap("test", 2));
             client.prepareMetadataUpdate(metadataUpdate1);
@@ -1556,11 +1556,11 @@ public class SenderTest {
         int maxRetries = 10;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
 
         Sender sender = new Sender(logContext, client, metadata, this.accumulator, true, MAX_REQUEST_SIZE, ACKS_ALL, maxRetries,
-                senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
+                senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
 
         appendToAccumulator(tp0); // failed response
         Future<RecordMetadata> successfulResponse = appendToAccumulator(tp1);
@@ -1599,11 +1599,11 @@ public class SenderTest {
 
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
 
         Sender sender = new Sender(logContext, client, metadata, this.accumulator, true, MAX_REQUEST_SIZE, ACKS_ALL, 10,
-            senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
+            senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
 
         appendToAccumulator(tp0); // failed response
         appendToAccumulator(tp1); // success response
@@ -1634,11 +1634,11 @@ public class SenderTest {
 
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
 
         Sender sender = new Sender(logContext, client, metadata, this.accumulator, true, MAX_REQUEST_SIZE, ACKS_ALL, 10,
-            senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
+            senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
 
         Future<RecordMetadata> failedResponse = appendToAccumulator(tp0);
         Future<RecordMetadata> successfulResponse = appendToAccumulator(tp1);
@@ -1669,11 +1669,11 @@ public class SenderTest {
         int maxRetries = 10;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
 
         Sender sender = new Sender(logContext, client, metadata, this.accumulator, true, MAX_REQUEST_SIZE, ACKS_ALL, maxRetries,
-                senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
+                senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
 
         Future<RecordMetadata> outOfOrderResponse = appendToAccumulator(tp0);
         Future<RecordMetadata> successfulResponse = appendToAccumulator(tp1);
@@ -2208,11 +2208,11 @@ public class SenderTest {
         int maxRetries = 10;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
 
         Sender sender = new Sender(logContext, client, metadata, this.accumulator, true, MAX_REQUEST_SIZE, ACKS_ALL, maxRetries,
-                senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
+                senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
 
         Future<RecordMetadata> responseFuture = appendToAccumulator(tp0);
         client.prepareResponse(body -> {
@@ -2251,10 +2251,10 @@ public class SenderTest {
         int maxRetries = 10;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
         Sender sender = new Sender(logContext, client, metadata, this.accumulator, true, MAX_REQUEST_SIZE, ACKS_ALL, maxRetries,
-                senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
+                senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
 
         Future<RecordMetadata> responseFuture = appendToAccumulator(tp0);
         sender.runOnce();  // connect.
@@ -2288,11 +2288,11 @@ public class SenderTest {
         int maxRetries = 10;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
 
         Sender sender = new Sender(logContext, client, metadata, this.accumulator, true, MAX_REQUEST_SIZE, ACKS_ALL, maxRetries,
-                senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
+                senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
 
         Future<RecordMetadata> responseFuture = appendToAccumulator(tp0);
         sender.runOnce();  // connect.
@@ -2354,12 +2354,12 @@ public class SenderTest {
             accumulator = new RecordAccumulator(logContext, batchSize, CompressionType.GZIP,
                 0, 0L, deliveryTimeoutMs, m, metricGrpName, time, new ApiVersions(), txnManager,
                 new BufferPool(totalSize, batchSize, metrics, time, "producer-internal-metrics"),
-                (short) -1, new ProducerTelemetryRegistry(m), new ProducerTopicTelemetryRegistry(m));
+                (short) -1, new ProducerSensorRegistry(m), new ProducerTopicSensorRegistry(m));
             SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-            ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-            ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+            ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+            ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
             Sender sender = new Sender(logContext, client, metadata, this.accumulator, true, MAX_REQUEST_SIZE, ACKS_ALL, maxRetries,
-                    senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, 1000L, txnManager, new ApiVersions());
+                    senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, 1000L, txnManager, new ApiVersions());
             // Create a two broker cluster, with partition 0 on broker 0 and partition 1 on broker 1
             MetadataResponse metadataUpdate1 = RequestTestUtils.metadataUpdateWith(2, Collections.singletonMap(topic, 2));
             client.prepareMetadataUpdate(metadataUpdate1);
@@ -2669,12 +2669,12 @@ public class SenderTest {
         int maxRetries = 1;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
         try {
             TransactionManager txnManager = new TransactionManager(logContext, "testTransactionalRequestsSentOnShutdown", 6000, 100, apiVersions);
             Sender sender = new Sender(logContext, client, metadata, this.accumulator, false, MAX_REQUEST_SIZE, ACKS_ALL,
-                    maxRetries, senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
+                    maxRetries, senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
 
             ProducerIdAndEpoch producerIdAndEpoch = new ProducerIdAndEpoch(123456L, (short) 0);
             TopicPartition tp = new TopicPartition("testTransactionalRequestsSentOnShutdown", 1);
@@ -2705,14 +2705,14 @@ public class SenderTest {
         try (Metrics m = new Metrics()) {
             int lingerMs = 50;
             SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-            ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-            ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+            ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+            ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
 
             TransactionManager txnManager = new TransactionManager(logContext, "txnId", 6000, 100, apiVersions);
             setupWithTransactionState(txnManager, lingerMs);
 
             Sender sender = new Sender(logContext, client, metadata, this.accumulator, false, MAX_REQUEST_SIZE, ACKS_ALL,
-                1, senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
+                1, senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
 
             // Begin a transaction and successfully add one partition to it.
             ProducerIdAndEpoch producerIdAndEpoch = new ProducerIdAndEpoch(123456L, (short) 0);
@@ -2761,14 +2761,14 @@ public class SenderTest {
     public void testAwaitPendingRecordsBeforeCommittingTransaction() throws Exception {
         try (Metrics m = new Metrics()) {
             SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-            ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-            ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+            ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+            ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
 
             TransactionManager txnManager = new TransactionManager(logContext, "txnId", 6000, 100, apiVersions);
             setupWithTransactionState(txnManager);
 
             Sender sender = new Sender(logContext, client, metadata, this.accumulator, false, MAX_REQUEST_SIZE, ACKS_ALL,
-                1, senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
+                1, senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
 
             // Begin a transaction and successfully add one partition to it.
             ProducerIdAndEpoch producerIdAndEpoch = new ProducerIdAndEpoch(123456L, (short) 0);
@@ -2834,12 +2834,12 @@ public class SenderTest {
         int maxRetries = 1;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
         try {
             TransactionManager txnManager = new TransactionManager(logContext, "testIncompleteTransactionAbortOnShutdown", 6000, 100, apiVersions);
             Sender sender = new Sender(logContext, client, metadata, this.accumulator, false, MAX_REQUEST_SIZE, ACKS_ALL,
-                    maxRetries, senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
+                    maxRetries, senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
 
             ProducerIdAndEpoch producerIdAndEpoch = new ProducerIdAndEpoch(123456L, (short) 0);
             TopicPartition tp = new TopicPartition("testIncompleteTransactionAbortOnShutdown", 1);
@@ -2871,12 +2871,12 @@ public class SenderTest {
         int maxRetries = 1;
         Metrics m = new Metrics();
         SenderMetricsRegistry senderMetrics = new SenderMetricsRegistry(m);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(m);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(m);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(m);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(m);
         try {
             TransactionManager txnManager = new TransactionManager(logContext, "testForceShutdownWithIncompleteTransaction", 6000, 100, apiVersions);
             Sender sender = new Sender(logContext, client, metadata, this.accumulator, false, MAX_REQUEST_SIZE, ACKS_ALL,
-                    maxRetries, senderMetrics, producerTelemetryRegistry, producerTopicTelemetryRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
+                    maxRetries, senderMetrics, producerSensorRegistry, producerTopicSensorRegistry, time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, txnManager, apiVersions);
 
             ProducerIdAndEpoch producerIdAndEpoch = new ProducerIdAndEpoch(123456L, (short) 0);
             TopicPartition tp = new TopicPartition("testForceShutdownWithIncompleteTransaction", 1);
@@ -3182,12 +3182,13 @@ public class SenderTest {
 
         this.accumulator = new RecordAccumulator(logContext, batchSize, CompressionType.NONE, lingerMs, 0L,
             DELIVERY_TIMEOUT_MS, metrics, metricGrpName, time, apiVersions, transactionManager, pool,
-            (short) -1, new ProducerTelemetryRegistry(this.metrics), new ProducerTopicTelemetryRegistry(this.metrics));
+            (short) -1, new ProducerSensorRegistry(this.metrics), new ProducerTopicSensorRegistry(this.metrics));
         this.senderMetricsRegistry = new SenderMetricsRegistry(this.metrics);
-        ProducerTelemetryRegistry producerTelemetryRegistry = new ProducerTelemetryRegistry(this.metrics);
-        ProducerTopicTelemetryRegistry producerTopicTelemetryRegistry = new ProducerTopicTelemetryRegistry(this.metrics);
+        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(this.metrics);
+        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(this.metrics);
         this.sender = new Sender(logContext, this.client, this.metadata, this.accumulator, guaranteeOrder, MAX_REQUEST_SIZE, ACKS_ALL,
-            retries, this.senderMetricsRegistry, producerTelemetryRegistry, producerTopicTelemetryRegistry, this.time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
+            retries, this.senderMetricsRegistry, producerSensorRegistry,
+            producerTopicSensorRegistry, this.time, REQUEST_TIMEOUT, RETRY_BACKOFF_MS, transactionManager, apiVersions);
 
         metadata.add("test", time.milliseconds());
         if (updateMetadata)
