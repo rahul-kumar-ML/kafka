@@ -17,6 +17,9 @@
 
 package org.apache.kafka.clients.telemetry;
 
+/**
+ * State that helps determine where we are in the telemetry subscribe->wait->push loop.
+ */
 public enum TelemetryState {
 
     initialized,

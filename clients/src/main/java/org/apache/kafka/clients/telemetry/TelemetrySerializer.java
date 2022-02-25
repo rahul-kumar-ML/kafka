@@ -20,6 +20,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Collection;
 
+/**
+ * Interface for serializing the {@link TelemetryMetric} collection out to the given
+ * {@link OutputStream}.
+ *
+ * Compression happens outside this method invocation, so implementations should be free to write
+ * directly to the given stream.
+ */
 public interface TelemetrySerializer {
 
     void serialize(Collection<TelemetryMetric> telemetryMetrics, OutputStream out)

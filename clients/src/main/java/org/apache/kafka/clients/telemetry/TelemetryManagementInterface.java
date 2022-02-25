@@ -363,9 +363,11 @@ public class TelemetryManagementInterface implements Closeable {
             set = Collections.emptySet();
         } else if (requestedMetrics.size() == 1 && requestedMetrics.get(0).isEmpty()) {
             // TODO: TELEMETRY_TODO: determine the set of all metrics
+            log.trace("Telemetry subscription has specified a single empty metric name; using all metrics");
             set = new HashSet<>();
         } else {
             // TODO: TELEMETRY_TODO: prefix string match...
+            log.trace("Telemetry subscription has specified to include only metrics that are prefixed with the following strings: {}", requestedMetrics);
             set = new HashSet<>();
         }
 
@@ -400,9 +402,9 @@ public class TelemetryManagementInterface implements Closeable {
     }
 
     public static Uuid validateClientInstanceId(Uuid clientInstanceId) {
-        if(clientInstanceId == null) {
-            throw new IllegalArgumentException("invalid client instance id");
-        }
+        if (clientInstanceId == null)
+            throw new IllegalArgumentException("clientInstanceId must be non-null");
+
         return clientInstanceId.equals(Uuid.ZERO_UUID) ? Uuid.randomUuid() : clientInstanceId;
     }
 

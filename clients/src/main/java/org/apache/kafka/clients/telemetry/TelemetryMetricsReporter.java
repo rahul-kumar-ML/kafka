@@ -27,6 +27,10 @@ import org.apache.kafka.common.metrics.MetricsReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * <code>TelemetryMetricsReporter</code> serves to tie into the the {@link MetricsReporter} logic
+ * by which our code can be notified of updates to the set of collected metrics.
+ */
 public class TelemetryMetricsReporter implements MetricsReporter {
 
     private static final Logger log = LoggerFactory.getLogger(TelemetryMetricsReporter.class);

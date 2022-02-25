@@ -24,6 +24,10 @@ import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.record.CompressionType;
 
+/**
+ * Simple, in-memory representation of the telemetry subscription that is retrieved from the cluster
+ * at startup and then periodically afterward, following the telemetry push.
+ */
 public class TelemetrySubscription {
 
     private final long fetchMs;
