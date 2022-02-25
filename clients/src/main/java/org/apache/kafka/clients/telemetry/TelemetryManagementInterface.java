@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -67,9 +68,9 @@ public class TelemetryManagementInterface implements Closeable {
 
     private static final String CLIENT_ID_METRIC_TAG = "client-id";
 
-    private final Time time;
+    public static final int DEFAULT_PUSH_INTERVAL_MS = 5 * 60 * 1000;
 
-    private final String clientId;
+    private final Time time;
 
     private final Metrics metrics;
 
@@ -88,8 +89,13 @@ public class TelemetryManagementInterface implements Closeable {
     private TelemetryState state = TelemetryState.initialized;
 
     public TelemetryManagementInterface(Time time, String clientId) {
-        this.time = time;
-        this.clientId = clientId;
+        if (time == null)
+            throw new IllegalArgumentException("time for TelemetryManagementInterface cannot be null");
+
+        if (clientId == null)
+            throw new IllegalArgumentException("clientId for TelemetryManagementInterface cannot be null");
+
+        this.time = Objects.requireNonNull(time, "time must be non-null");
         this.telemetrySerializer = new OtlpTelemetrySerializer();
         this.deltaValueStore = new DeltaValueStore();
         this.telemetryMetricsReporter = new TelemetryMetricsReporter(deltaValueStore);
@@ -107,10 +113,6 @@ public class TelemetryManagementInterface implements Closeable {
 
     public Time time() {
         return time;
-    }
-
-    public String clientId() {
-        return clientId;
     }
 
     public Metrics metrics() {
@@ -136,36 +138,6 @@ public class TelemetryManagementInterface implements Closeable {
             telemetryMetricsReporter.close();
             metrics.close();
         }
-    }
-
-    public Bytes collectMetricsPayload(CompressionType compressionType, boolean deltaTemporality) {
-        log.trace("collectMetricsPayload starting");
-        Collection<TelemetryMetric> telemetryMetrics = telemetryMetricsReporter.current().stream().map(kafkaMetric -> {
-            String name = kafkaMetric.metricName().name();
-            long value;
-
-            {
-                Object metricValue = kafkaMetric.metricValue();
-                double doubleValue = Double.parseDouble(metricValue.toString());
-                value = Double.valueOf(doubleValue).longValue();
-                Measurable measurable = kafkaMetric.measurable();
-
-                if (measurable instanceof CumulativeSum && deltaTemporality) {
-                    Long previousValue = deltaValueStore.getAndSet(kafkaMetric.metricName(), value);
-                    value = previousValue != null ? value - previousValue : value;
-                }
-            }
-
-            MetricType metricType = metricType(kafkaMetric);
-            String description = kafkaMetric.metricName().description();
-
-            TelemetryMetric telemetryMetric = new TelemetryMetric(name, metricType, value, description);
-            log.debug("Including telemetry metric: {}", telemetryMetric);
-            return telemetryMetric;
-        }).collect(Collectors.toList());
-
-        ByteBuffer buf = serialize(telemetryMetrics, compressionType, telemetrySerializer);
-        return Bytes.wrap(Utils.readBytes(buf));
     }
 
     public void setSubscription(TelemetrySubscription subscription) {
@@ -231,14 +203,14 @@ public class TelemetryManagementInterface implements Closeable {
         }
     }
 
-    public void setState(TelemetryState state) {
+    void setState(TelemetryState state) {
         synchronized (stateLock) {
             log.trace("Setting state from {} to {}", this.state, state);
             this.state = validateTransition(this.state, state);
         }
     }
 
-    public TelemetryState state() {
+    TelemetryState state() {
         synchronized (stateLock) {
             return state;
         }
@@ -274,7 +246,7 @@ public class TelemetryManagementInterface implements Closeable {
         Set<MetricName> metricNames = validateMetricNames(data.requestedMetrics());
         List<CompressionType> acceptedCompressionTypes = validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
         Uuid clientInstanceId = validateClientInstanceId(data.clientInstanceId());
-        int pushIntervalMs = validatePushInteravlMs(data.pushIntervalMs());
+        int pushIntervalMs = validatePushIntervalMs(data.pushIntervalMs());
 
         TelemetrySubscription telemetrySubscription = new TelemetrySubscription(time.milliseconds(),
             data.throttleTimeMs(),
@@ -286,9 +258,15 @@ public class TelemetryManagementInterface implements Closeable {
             metricNames);
 
         log.debug("Successfully retrieved telemetry subscription: {}", telemetrySubscription);
-
         setSubscription(telemetrySubscription);
-        setState(TelemetryState.push_needed);
+
+        if (metricNames.isEmpty()) {
+            // TODO: TELEMETRY_TODO: this is the case where no metrics are requested and/or match
+            //                       the filters. We need to wait pushIntervalMs then retry.
+            setState(TelemetryState.subscription_needed);
+        } else {
+            setState(TelemetryState.push_needed);
+        }
     }
 
     public void pushTelemetrySucceeded() {
@@ -321,6 +299,9 @@ public class TelemetryManagementInterface implements Closeable {
         if (s == TelemetryState.initialized || s == TelemetryState.subscription_needed) {
             // TODO: TELEMETRY_TODO: verify
             t = 0;
+
+            // TODO: TELEMETRY_TODO: implement case where previous subscription had no metrics and
+            //                       we need to wait pushIntervalMs() before requesting it again.
         } else  if (s == TelemetryState.terminated) {
             // TODO: TELEMETRY_TODO: verify and add a good error message
             throw new IllegalTelemetryStateException();
@@ -355,7 +336,9 @@ public class TelemetryManagementInterface implements Closeable {
 
             boolean terminating = state() == TelemetryState.terminating;
             CompressionType compressionType = preferredCompressionType(subscription.acceptedCompressionTypes());
-            Bytes metricsData = collectMetricsPayload(compressionType, subscription.deltaTemporality());
+            Collection<TelemetryMetric> telemetryMetrics = currentTelemetryMetrics(subscription.deltaTemporality());
+            ByteBuffer buf = serialize(telemetryMetrics, compressionType, telemetrySerializer);
+            Bytes metricsData =  Bytes.wrap(Utils.readBytes(buf));
 
             if (terminating)
                 setState(TelemetryState.terminating_push_in_progress);
@@ -423,9 +406,14 @@ public class TelemetryManagementInterface implements Closeable {
         return clientInstanceId.equals(Uuid.ZERO_UUID) ? Uuid.randomUuid() : clientInstanceId;
     }
 
-    public static int validatePushInteravlMs(Integer pushIntervalMs) {
-        // TODO: TELEMETRY_TODO: I don't think we'll need this, but maybe it's good to be paranoid?
-        return pushIntervalMs != null && pushIntervalMs > 0 ? pushIntervalMs : 10000;
+    public static int validatePushIntervalMs(int pushIntervalMs) {
+        if (pushIntervalMs < 0) {
+            log.warn("Telemetry subscription push interval value from broker was invalid ({}), substituting a value of {}", pushIntervalMs, DEFAULT_PUSH_INTERVAL_MS);
+            return DEFAULT_PUSH_INTERVAL_MS;
+        }
+
+        log.debug("Telemetry subscription push interval value from broker was {}", pushIntervalMs);
+        return pushIntervalMs;
     }
 
     public static CompressionType preferredCompressionType(List<CompressionType> acceptedCompressionTypes) {
@@ -452,6 +440,30 @@ public class TelemetryManagementInterface implements Closeable {
         }
     }
 
+    public List<TelemetryMetric> currentTelemetryMetrics(boolean deltaTemporality) {
+        return telemetryMetricsReporter.current().stream().map(kafkaMetric -> {
+            String name = kafkaMetric.metricName().name();
+            Object metricValue = kafkaMetric.metricValue();
+
+            // TODO: TELEMETRY_TODO: not sure if the metric value is always stored as a double,
+            //                       but empirically it seems to be. Not sure if there is a better
+            //                       way to handle this.
+            double doubleValue = Double.parseDouble(metricValue.toString());
+            long value = Double.valueOf(doubleValue).longValue();
+            Measurable measurable = kafkaMetric.measurable();
+
+            if (measurable instanceof CumulativeSum && deltaTemporality) {
+                Long previousValue = deltaValueStore.getAndSet(kafkaMetric.metricName(), value);
+                value = previousValue != null ? value - previousValue : value;
+            }
+
+            MetricType metricType = metricType(kafkaMetric);
+            String description = kafkaMetric.metricName().description();
+
+            return new TelemetryMetric(name, metricType, value, description);
+        }).collect(Collectors.toList());
+    }
+
     public static ByteBuffer serialize(Collection<TelemetryMetric> telemetryMetrics,
         CompressionType compressionType,
         TelemetrySerializer telemetrySerializer) {
@@ -470,6 +482,9 @@ public class TelemetryManagementInterface implements Closeable {
     }
 
     public static TelemetryManagementInterface maybeCreate(AbstractConfig config, Time time, String clientId) {
+        if (config == null)
+            throw new IllegalArgumentException("config for TelemetryManagementInterface cannot be null");
+
         boolean enableMetricsPush = config.getBoolean(CommonClientConfigs.ENABLE_METRICS_PUSH_CONFIG);
         return maybeCreate(enableMetricsPush, time, clientId);
     }
@@ -486,20 +501,38 @@ public class TelemetryManagementInterface implements Closeable {
         return String.valueOf(error);
     }
 
-    public static TelemetryState validateTransition(TelemetryState oldState, TelemetryState newState) {
-        switch (oldState) {
+    /**
+     * Internal helper method that validates that the state transition from <code>currState</code>
+     * to <code>newState</code> is valid.
+     *
+     * @param currState State that the telemetry is already in; must be non-<code>null</code>
+     * @param newState State into which the telemetry is trying to transition; must be
+     *                 non-<code>null</code>
+     * @return {@link TelemetryState} that is <code>newState</code>; this is done for assignment
+     * chaining
+     * @throws IllegalTelemetryStateException if the state transition isn't valid
+     */
+
+    static TelemetryState validateTransition(TelemetryState currState, TelemetryState newState) {
+        if (currState == null)
+            throw new IllegalTelemetryStateException("currState cannot be null");
+
+        if (newState == null)
+            throw new IllegalTelemetryStateException("newState cannot be null");
+
+        switch (currState) {
             case initialized:
                 // If we're just starting up, the happy path is to next request a subscription.
                 //
                 // Don't forget, there are probably error cases for which we might transition
                 // straight to terminating without having done any "real" work.
-                return validateTransitionAllowed(oldState, newState, TelemetryState.subscription_needed, TelemetryState.terminating);
+                return validateTransitionAllowed(currState, newState, TelemetryState.subscription_needed, TelemetryState.terminating);
 
             case subscription_needed:
                 // If we need a subscription, the main thing we can do is request one.
                 //
                 // However, it's still possible that we don't get very far before terminating.
-                return validateTransitionAllowed(oldState, newState, TelemetryState.subscription_in_progress, TelemetryState.terminating);
+                return validateTransitionAllowed(currState, newState, TelemetryState.subscription_in_progress, TelemetryState.terminating);
 
             case subscription_in_progress:
                 // If we are finished awaiting our subscription, the most likely step is to next
@@ -509,7 +542,7 @@ public class TelemetryManagementInterface implements Closeable {
                 //
                 // As before, it's possible that we don't get our response before we have to
                 // terminate.
-                return validateTransitionAllowed(oldState, newState, TelemetryState.push_needed, TelemetryState.subscription_needed, TelemetryState.terminating);
+                return validateTransitionAllowed(currState, newState, TelemetryState.push_needed, TelemetryState.subscription_needed, TelemetryState.terminating);
 
             case push_needed:
                 // If we are transitioning out of this state, chances are that we are doing so
@@ -520,7 +553,7 @@ public class TelemetryManagementInterface implements Closeable {
                 //
                 // But guess what? Yep - it's possible that we don't get to push before we have
                 // to terminate.
-                return validateTransitionAllowed(oldState, newState, TelemetryState.push_in_progress, TelemetryState.subscription_needed, TelemetryState.terminating);
+                return validateTransitionAllowed(currState, newState, TelemetryState.push_in_progress, TelemetryState.subscription_needed, TelemetryState.terminating);
 
             case push_in_progress:
                 // If we are transitioning out of this state, I'm guessing it's because we
@@ -535,31 +568,46 @@ public class TelemetryManagementInterface implements Closeable {
                 // So in either case, noting that we're now waiting for a subscription is OK.
                 //
                 // Again, it's possible that we don't get our response before we have to terminate.
-                return validateTransitionAllowed(oldState, newState, TelemetryState.subscription_needed, TelemetryState.terminating);
+                return validateTransitionAllowed(currState, newState, TelemetryState.subscription_needed, TelemetryState.terminating);
 
             case terminating:
                 // If we are moving out of this state, we are hopefully doing so because we're
                 // going to try to send our last push. Either that or we want to be fully
                 // terminated.
-                return validateTransitionAllowed(oldState, newState, TelemetryState.terminated, TelemetryState.terminating_push_in_progress);
+                return validateTransitionAllowed(currState, newState, TelemetryState.terminated, TelemetryState.terminating_push_in_progress);
 
             case terminating_push_in_progress:
                 // If we are done in this state, we should only be transitioning to fully
                 // terminated.
-                return validateTransitionAllowed(oldState, newState, TelemetryState.terminated);
+                return validateTransitionAllowed(currState, newState, TelemetryState.terminated);
 
             case terminated:
                 // We should never be able to transition out of this state...
-                return validateTransitionAllowed(oldState, newState);
+                return validateTransitionAllowed(currState, newState);
 
             default:
                 // We shouldn't get to here unless we somehow accidentally try to transition out
                 // of the terminated state.
-                return validateTransitionAllowed(oldState, newState);
+                return validateTransitionAllowed(currState, newState);
         }
     }
 
-    public static TelemetryState validateTransitionAllowed(TelemetryState oldState, TelemetryState newState, TelemetryState... allowableStates) {
+    /**
+     * Internal helper method that validates that the <code>newState</code> parameter value is
+     * one of the options in <code>allowableStates</code>.
+     *
+     * @param currState State that the telemetry is already in; only used for error messages but
+     *                 most be non-<code>null</code>
+     * @param newState State into which the telemetry is trying to transition; must be
+     *                 non-<code>null</code>
+     * @param allowableStates Array of {@link TelemetryState}s to which it is valid for
+     *                    <code>currState</code> to transition
+     * @return {@link TelemetryState} that is <code>newState</code>; this is done for assignment
+     * chaining
+     * @throws IllegalTelemetryStateException if the state transition isn't valid
+     */
+
+    private static TelemetryState validateTransitionAllowed(TelemetryState currState, TelemetryState newState, TelemetryState... allowableStates) {
         if (allowableStates != null) {
             for (TelemetryState allowableState : allowableStates) {
                 if (newState == allowableState)
@@ -567,7 +615,23 @@ public class TelemetryManagementInterface implements Closeable {
             }
         }
 
-        throw new IllegalTelemetryStateException(String.format("Invalid transition from %s to %s", oldState, newState));
+        // We didn't find a match above, so now we're just formatting a nice error message...
+        String validStatesClause;
+
+        if (allowableStates != null && allowableStates.length > 0) {
+            validStatesClause = String.format("the valid telemetry state transitions from %s are: %s",
+                currState,
+                Utils.join(allowableStates, ", "));
+        } else {
+            validStatesClause = String.format("there are no valid telemetry state transitions from %s", currState);
+        }
+
+        String message = String.format("Invalid telemetry state transition from %s to %s; %s",
+            currState,
+            newState,
+            validStatesClause);
+
+        throw new IllegalTelemetryStateException(message);
     }
 
 }
