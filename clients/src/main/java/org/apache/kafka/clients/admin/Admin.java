@@ -1584,10 +1584,10 @@ public interface Admin extends AutoCloseable {
      * to its eventual monitoring destination(s).
      *
      * If telemetry is enabled, this will first require a connection to the cluster to generate
-     * the unique client instance ID. This method waits up to <code>timeout</code> for the admin
+     * the unique client instance ID. This method waits up to {@code timeout} for the admin
      * client to complete the request.
      *
-     * If telemetry is disabled, the method will immediately return <code>null</code>.
+     * If telemetry is disabled, the method will immediately return {@code null}.
      *
      * Client telemetry is controlled by the {@link AdminClientConfig#ENABLE_METRICS_PUSH_CONFIG}
      * configuration option.
@@ -1599,7 +1599,7 @@ public interface Admin extends AutoCloseable {
      * @throws KafkaException If an unexpected error occurs while trying to determine the client
      *                        instance ID, though this error does not necessarily imply the
      *                        admin client is otherwise unusable.
-     * @throws IllegalArgumentException If the <code>timeout</code> is negative.
+     * @throws IllegalArgumentException If the {@code timeout} is negative.
      * @return Human-readable string representation of the client instance ID
      */
     String clientInstanceId(Duration timeout);

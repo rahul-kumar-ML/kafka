@@ -1200,10 +1200,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * to its eventual monitoring destination(s).
      *
      * If telemetry is enabled, this will first require a connection to the cluster to generate
-     * the unique client instance ID. This method waits up to <code>timeout</code> for the producer
+     * the unique client instance ID. This method waits up to {@code timeout} for the producer
      * to complete the request.
      *
-     * If telemetry is disabled, the method will immediately return <code>null</code>.
+     * If telemetry is disabled, the method will immediately return {@code null}.
      *
      * Client telemetry is controlled by the {@link ProducerConfig#ENABLE_METRICS_PUSH_CONFIG}
      * configuration option.
@@ -1215,7 +1215,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * @throws KafkaException If an unexpected error occurs while trying to determine the client
      *                        instance ID, though this error does not necessarily imply the
      *                        producer is otherwise unusable.
-     * @throws IllegalArgumentException If the <code>timeout</code> is negative.
+     * @throws IllegalArgumentException If the {@code timeout} is negative.
      * @return Human-readable string representation of the client instance ID
      */
     @Override
