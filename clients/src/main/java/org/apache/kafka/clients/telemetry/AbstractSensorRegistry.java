@@ -17,6 +17,8 @@
 package org.apache.kafka.clients.telemetry;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -88,6 +90,20 @@ public abstract class AbstractSensorRegistry {
         MetricNameTemplate template = new MetricNameTemplate(name, group, description, tags);
         allTemplates.add(template);
         return template;
+    }
+
+    protected Set<String> appendTags(Set<String> existingTags, String... newTags) {
+        // When creating a tag set in the Metrics class, they are kept in order of addition, hence
+        // the use of the LinkedHashSet here...
+        Set<String> set = new LinkedHashSet<>();
+
+        if (existingTags != null)
+            set.addAll(existingTags);
+
+        if (newTags != null)
+            Collections.addAll(set, newTags);
+
+        return set;
     }
 
     private Sensor sensor(MetricName mn, Supplier<MeasurableStat> measurableStatSupplier) {

@@ -62,13 +62,8 @@ public class ProducerTopicSensorRegistry extends AbstractSensorRegistry {
     public ProducerTopicSensorRegistry(Metrics metrics) {
         super(metrics);
 
-        Set<String> topicPartitionAcksTags = new LinkedHashSet<>(tags);
-        topicPartitionAcksTags.add("topic");
-        topicPartitionAcksTags.add("partition");
-        topicPartitionAcksTags.add("acks");
-
-        Set<String> topicPartitionAcksReasonTags = new LinkedHashSet<>(topicPartitionAcksTags);
-        topicPartitionAcksReasonTags.add("reason");
+        Set<String> topicPartitionAcksTags = appendTags(tags, "topic", "partition", "acks");
+        Set<String> topicPartitionAcksReasonTags = appendTags(topicPartitionAcksTags, "reason");
 
         this.queueBytes = createTemplate("queue.bytes",
             "Number of bytes queued on partition queue.",

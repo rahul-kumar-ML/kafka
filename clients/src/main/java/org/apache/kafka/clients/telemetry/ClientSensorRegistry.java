@@ -69,17 +69,10 @@ public class ClientSensorRegistry extends AbstractSensorRegistry {
     public ClientSensorRegistry(Metrics metrics) {
         super(metrics);
 
-        Set<String> brokerIdTags = new LinkedHashSet<>(tags);
-        brokerIdTags.add(BROKER_ID_LABEL);
-
-        Set<String> reasonTags = new LinkedHashSet<>(tags);
-        reasonTags.add(REASON_LABEL);
-
-        Set<String> brokerIdRequestTypeTags = new LinkedHashSet<>(brokerIdTags);
-        brokerIdRequestTypeTags.add(REQUEST_TYPE_LABEL);
-
-        Set<String> brokerIdRequestTypeReasonTags = new LinkedHashSet<>(brokerIdRequestTypeTags);
-        brokerIdRequestTypeReasonTags.add(REASON_LABEL);
+        Set<String> brokerIdTags = appendTags(tags, BROKER_ID_LABEL);
+        Set<String> reasonTags = appendTags(tags, REASON_LABEL);
+        Set<String> brokerIdRequestTypeTags = appendTags(brokerIdTags, REQUEST_TYPE_LABEL);
+        Set<String> brokerIdRequestTypeReasonTags = appendTags(brokerIdRequestTypeTags, REASON_LABEL);
 
         this.connectionCreations = createTemplate("connection.creations",
             "Total number of broker connections made.",

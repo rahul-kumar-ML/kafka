@@ -67,8 +67,7 @@ public class ConsumerSensorRegistry extends AbstractSensorRegistry {
     public ConsumerSensorRegistry(Metrics metrics) {
         super(metrics);
 
-        Set<String> errorTags = new LinkedHashSet<>(tags);
-        errorTags.add("error");
+        Set<String> errorTags = appendTags(tags, "error");
 
         this.pollInterval = createMetricName("poll.interval",
             "The interval at which the application calls poll(), in seconds.");
