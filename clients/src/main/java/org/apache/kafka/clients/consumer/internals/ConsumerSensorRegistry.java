@@ -17,7 +17,6 @@
 package org.apache.kafka.clients.consumer.internals;
 
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.telemetry.AbstractSensorRegistry;

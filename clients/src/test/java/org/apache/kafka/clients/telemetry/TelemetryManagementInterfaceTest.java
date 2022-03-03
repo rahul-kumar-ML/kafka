@@ -22,14 +22,10 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.record.RecordBatch;
-import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.common.utils.BufferSupplier;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
@@ -275,15 +271,10 @@ public class TelemetryManagementInterfaceTest {
             return;
 
         Class<IllegalArgumentException> e = IllegalArgumentException.class;
-        ProducerConfig config = bootstrapTestProducerConfig();
 
         assertThrows(e,
             () -> TelemetryManagementInterface.maybeCreate(true, time, clientId),
             String.format("maybeCreate should have thrown a %s for time: %s and clientId: %s", e.getName(), time, clientId));
-
-        assertThrows(e,
-            () -> TelemetryManagementInterface.maybeCreate(config, time, clientId),
-            String.format("maybeCreate should have thrown a %s for time: %s, clientId: %s",  e.getName(), time, clientId));
     }
 
     private TelemetryMetric newTelemetryMetric(String name, long value) {
@@ -291,15 +282,6 @@ public class TelemetryManagementInterfaceTest {
             MetricType.sum,
             value,
             "Description for " + name);
-    }
-
-    private ProducerConfig bootstrapTestProducerConfig() {
-        Map<String, Object> map = new HashMap<>();
-        map.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        map.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        map.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        map.put(ProducerConfig.ENABLE_METRICS_PUSH_CONFIG, true);
-        return new ProducerConfig(map);
     }
 
 }

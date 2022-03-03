@@ -17,7 +17,6 @@
 package org.apache.kafka.clients.producer.internals;
 
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.telemetry.AbstractSensorRegistry;
@@ -126,7 +125,7 @@ public class ProducerTopicSensorRegistry extends AbstractSensorRegistry {
 
     private Map<String, String> getMetricsTags(TopicPartition topicPartition, short acks) {
         Map<String, String> metricsTags = new HashMap<>();
-        metricsTags.put(ACKS_LABEL, formatAcks(String.valueOf(acks)));
+        metricsTags.put(ACKS_LABEL, formatAcks(acks));
         metricsTags.put(PARTITION_LABEL, String.valueOf(topicPartition.partition()));
         metricsTags.put(TOPIC_LABEL, topicPartition.topic());
         return metricsTags;
@@ -137,21 +136,17 @@ public class ProducerTopicSensorRegistry extends AbstractSensorRegistry {
         return createTemplate(qualifiedName, GROUP_NAME, description, tags);
     }
 
-    static String formatAcks(String acks) {
+    static String formatAcks(short acks) {
         // TODO: TELEMETRY_TODO: this mapping needs to be verified
-        if (acks == null)
-            return "all";
+        switch (acks) {
+            case 0:
+                return "none";
 
-        acks = acks.trim();
+            case 1:
+                return "leader";
 
-        if (acks.equals("0") || acks.equalsIgnoreCase("none")) {
-            return "none";
-        } else if (acks.equals("1") || acks.equalsIgnoreCase("leader")) {
-            return "leader";
-        } else if (acks.equals("-1") || acks.equals("all")) {
-            return "all";
-        } else {
-            return "all";
+            default:
+                return "all";
         }
     }
 

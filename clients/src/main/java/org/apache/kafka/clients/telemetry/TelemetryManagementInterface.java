@@ -111,10 +111,6 @@ public class TelemetryManagementInterface implements Closeable {
             metricsContext);
     }
 
-    public Time time() {
-        return time;
-    }
-
     public Metrics metrics() {
         return metrics;
     }
@@ -140,7 +136,7 @@ public class TelemetryManagementInterface implements Closeable {
         }
     }
 
-    public void setSubscription(TelemetrySubscription subscription) {
+    private void setSubscription(TelemetrySubscription subscription) {
         synchronized (subscriptionLock) {
             this.subscription = subscription;
             subscriptionLock.notifyAll();
@@ -210,7 +206,7 @@ public class TelemetryManagementInterface implements Closeable {
         }
     }
 
-    TelemetryState state() {
+    public TelemetryState state() {
         synchronized (stateLock) {
             return state;
         }
@@ -225,7 +221,7 @@ public class TelemetryManagementInterface implements Closeable {
         setState(TelemetryState.subscription_needed);
     }
 
-    public void pushTelemetryFailed(Exception error) {
+    public void pushTelemetryFailed(Throwable error) {
         if (error != null)
             log.warn("Failed to push telemetry", error);
         else
@@ -242,7 +238,6 @@ public class TelemetryManagementInterface implements Closeable {
     }
 
     public void telemetrySubscriptionSucceeded(GetTelemetrySubscriptionsResponseData data) {
-        Time time = time();
         Set<MetricName> metricNames = validateMetricNames(data.requestedMetrics());
         List<CompressionType> acceptedCompressionTypes = validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
         Uuid clientInstanceId = validateClientInstanceId(data.clientInstanceId());
@@ -306,7 +301,7 @@ public class TelemetryManagementInterface implements Closeable {
             // TODO: TELEMETRY_TODO: verify and add a good error message
             throw new IllegalTelemetryStateException();
         } else {
-            long milliseconds = time().milliseconds();
+            long milliseconds = time.milliseconds();
             TelemetrySubscription subscription = subscription();
 
             if (subscription != null) {
