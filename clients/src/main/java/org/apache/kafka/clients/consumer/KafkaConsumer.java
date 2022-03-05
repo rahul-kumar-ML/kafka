@@ -16,7 +16,7 @@
  */
 package org.apache.kafka.clients.consumer;
 
-import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.maybeCreate;
+import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.create;
 
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientUtils;
@@ -35,6 +35,7 @@ import org.apache.kafka.clients.consumer.internals.FetcherMetricsRegistry;
 import org.apache.kafka.clients.consumer.internals.KafkaConsumerMetrics;
 import org.apache.kafka.clients.consumer.internals.NoOpConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.internals.SubscriptionState;
+import org.apache.kafka.clients.telemetry.ClientTelemetryUtils;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.KafkaException;
@@ -702,7 +703,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.defaultApiTimeoutMs = config.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG);
             this.time = Time.SYSTEM;
             this.metrics = buildMetrics(config, time, clientId);
-            this.clientTelemetry = maybeCreate(config, time, clientId);
+            this.clientTelemetry = ClientTelemetryUtils.create(config, time, clientId);
             this.retryBackoffMs = config.getLong(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG);
 
             List<ConsumerInterceptor<K, V>> interceptorList = (List) config.getConfiguredInstances(
@@ -860,7 +861,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         this.interceptors = Objects.requireNonNull(interceptors);
         this.time = time;
         this.client = client;
-        this.clientTelemetry = maybeCreate(enableMetricsPush, time, clientId);
+        this.clientTelemetry = create(enableMetricsPush, time, clientId);
         this.metrics = metrics;
         this.subscriptions = subscriptions;
         this.metadata = metadata;

@@ -215,15 +215,15 @@ public class ClientTelemetryUtils {
         }
     }
 
-    public static ClientTelemetry maybeCreate(AbstractConfig config, Time time, String clientId) {
+    public static ClientTelemetry create(AbstractConfig config, Time time, String clientId) {
         if (config == null)
             throw new IllegalArgumentException("config for ClientTelemetry cannot be null");
 
         boolean enableMetricsPush = config.getBoolean(CommonClientConfigs.ENABLE_METRICS_PUSH_CONFIG);
-        return maybeCreate(enableMetricsPush, time, clientId);
+        return create(enableMetricsPush, time, clientId);
     }
 
-    public static ClientTelemetry maybeCreate(boolean enableMetricsPush, Time time, String clientId) {
+    public static ClientTelemetry create(boolean enableMetricsPush, Time time, String clientId) {
         if (enableMetricsPush)
             return new DefaultClientTelemetry(time, clientId);
         else

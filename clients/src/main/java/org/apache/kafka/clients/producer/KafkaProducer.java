@@ -16,7 +16,7 @@
  */
 package org.apache.kafka.clients.producer;
 
-import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.maybeCreate;
+import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.create;
 
 import java.util.Optional;
 import org.apache.kafka.clients.ApiVersions;
@@ -34,6 +34,7 @@ import org.apache.kafka.clients.producer.internals.KafkaProducerMetrics;
 import org.apache.kafka.clients.producer.internals.ProducerInterceptors;
 import org.apache.kafka.clients.producer.internals.ProducerMetadata;
 import org.apache.kafka.clients.producer.internals.ProducerMetrics;
+import org.apache.kafka.clients.telemetry.ClientTelemetryUtils;
 import org.apache.kafka.clients.telemetry.ProducerMetricRecorder;
 import org.apache.kafka.clients.telemetry.ProducerTopicMetricRecorder;
 import org.apache.kafka.clients.producer.internals.RecordAccumulator;
@@ -366,7 +367,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     config.originalsWithPrefix(CommonClientConfigs.METRICS_CONTEXT_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time, metricsContext);
             this.producerMetrics = new KafkaProducerMetrics(metrics);
-            this.clientTelemetry = maybeCreate(config, time, clientId);
+            this.clientTelemetry = ClientTelemetryUtils.create(config, time, clientId);
             this.producerMetricRecorder = clientTelemetry.producerMetricRecorder();
             this.producerTopicMetricRecorder = clientTelemetry.producerTopicMetricRecorder();
             this.partitioner = config.getConfiguredInstance(

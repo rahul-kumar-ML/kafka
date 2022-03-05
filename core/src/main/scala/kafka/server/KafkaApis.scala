@@ -3462,16 +3462,20 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleGetTelemetrySubscriptionRequest(request: RequestChannel.Request): Unit = {
     val subscriptionRequest = request.body[GetTelemetrySubscriptionRequest]
 
+    if (subscriptionRequest.getClientInstanceId == Uuid.ZERO_UUID) {
       requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
         subscriptionRequest.getErrorResponse(requestThrottleMs, Errors.INVALID_REQUEST.exception))
+    }
   }
 
   // Just a place holder for now.
   def handlePushTelemetryRequest(request: RequestChannel.Request): Unit = {
     val pushTelemetryRequest = request.body[PushTelemetryRequest]
 
-    requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
-      pushTelemetryRequest.getErrorResponse(requestThrottleMs, Errors.INVALID_REQUEST.exception))
+    if (pushTelemetryRequest.getClientInstanceId == Uuid.ZERO_UUID) {
+      requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+        pushTelemetryRequest.getErrorResponse(requestThrottleMs, Errors.INVALID_REQUEST.exception))
+    }
   }
 
   private def updateRecordConversionStats(request: RequestChannel.Request,

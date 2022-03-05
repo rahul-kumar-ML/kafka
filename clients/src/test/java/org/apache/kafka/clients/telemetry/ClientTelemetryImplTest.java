@@ -117,7 +117,7 @@ public class ClientTelemetryImplTest {
 
     @Test
     public void testMaybeCreateFailsIfClientIdIsNull() {
-        assertThrows(IllegalArgumentException.class, () -> ClientTelemetryUtils.maybeCreate(true, new MockTime(), null));
+        assertThrows(IllegalArgumentException.class, () -> ClientTelemetryUtils.create(true, new MockTime(), null));
     }
 
     @ParameterizedTest
@@ -259,7 +259,7 @@ public class ClientTelemetryImplTest {
         Class<IllegalArgumentException> e = IllegalArgumentException.class;
 
         assertThrows(e,
-            () -> ClientTelemetryUtils.maybeCreate(true, time, clientId),
+            () -> ClientTelemetryUtils.create(true, time, clientId),
             String.format("maybeCreate should have thrown a %s for time: %s and clientId: %s", e.getName(), time, clientId));
     }
 

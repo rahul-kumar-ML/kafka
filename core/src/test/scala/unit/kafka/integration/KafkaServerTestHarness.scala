@@ -126,8 +126,6 @@ abstract class KafkaServerTestHarness extends QuorumTestHarness {
           threadNamePrefix = None,
           enableForwarding
         )
-
-        System.out.println("created server, bruh")
       }
     }
     brokerList = TestUtils.bootstrapServers(_brokers, listenerName)

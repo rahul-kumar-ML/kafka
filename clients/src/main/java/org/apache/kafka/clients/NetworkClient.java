@@ -1042,6 +1042,7 @@ public class NetworkClient implements KafkaClient {
     }
 
     private void incrementRequestErrorsTelemetry(String brokerId, RequestErrorReason reason) {
+        // TODO: TELEMETRY_TODO: Need to be able to determine the request type somehow...
         String requestType = "requestType TBA";
         clientInstanceMetricRecorder.recordRequestErrors(brokerId, requestType, reason, 1);
     }
