@@ -23,6 +23,8 @@ import org.apache.kafka.clients.consumer.CommitFailedException;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.clients.telemetry.ClientTelemetry;
+import org.apache.kafka.clients.telemetry.DefaultClientTelemetry;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Node;
@@ -170,17 +172,15 @@ public class TransactionManagerTest {
         String metricGrpName = "producer-metrics";
 
         this.brokerNode = new Node(0, "localhost", 2211);
+        ClientTelemetry clientTelemetry = new DefaultClientTelemetry(time, "mock-client-id");
         this.accumulator = new RecordAccumulator(logContext, batchSize, CompressionType.NONE, 0, 0L,
                 deliveryTimeoutMs, metrics, metricGrpName, time, apiVersions, transactionManager,
                 new BufferPool(totalSize, batchSize, metrics, time, metricGrpName),
-                (short) -1, new ProducerSensorRegistry(metrics), new ProducerTopicSensorRegistry(metrics));
-
-        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(metrics);
-        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(metrics);
+                (short) -1, clientTelemetry);
 
         this.sender = new Sender(logContext, this.client, this.metadata, this.accumulator, true,
                 MAX_REQUEST_SIZE, ACKS_ALL, MAX_RETRIES, new SenderMetricsRegistry(metrics),
-            producerSensorRegistry, producerTopicSensorRegistry, this.time, REQUEST_TIMEOUT,
+                clientTelemetry, this.time, REQUEST_TIMEOUT,
                 50, transactionManager, apiVersions);
     }
 
@@ -3052,11 +3052,10 @@ public class TransactionManagerTest {
         // Use a custom Sender to allow multiple inflight requests
         initializeTransactionManager(Optional.empty());
         Metrics metrics = new Metrics(time);
-        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(metrics);
-        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(metrics);
+        ClientTelemetry clientTelemetry = new DefaultClientTelemetry(time, "mock-client-id");
         Sender sender = new Sender(logContext, this.client, this.metadata, this.accumulator, false,
                 MAX_REQUEST_SIZE, ACKS_ALL, MAX_RETRIES, new SenderMetricsRegistry(metrics),
-            producerSensorRegistry, producerTopicSensorRegistry, this.time,
+                clientTelemetry, this.time,
                 REQUEST_TIMEOUT, 50, transactionManager, apiVersions);
         initializeIdempotentProducerId(producerId, epoch);
 
@@ -3180,11 +3179,10 @@ public class TransactionManagerTest {
         // Use a custom Sender to allow multiple inflight requests
         initializeTransactionManager(Optional.empty());
         Metrics metrics = new Metrics(time);
-        ProducerSensorRegistry producerSensorRegistry = new ProducerSensorRegistry(metrics);
-        ProducerTopicSensorRegistry producerTopicSensorRegistry = new ProducerTopicSensorRegistry(metrics);
+        ClientTelemetry clientTelemetry = new DefaultClientTelemetry(time, "mock-client-id");
         Sender sender = new Sender(logContext, this.client, this.metadata, this.accumulator, false,
                 MAX_REQUEST_SIZE, ACKS_ALL, MAX_RETRIES, new SenderMetricsRegistry(metrics),
-            producerSensorRegistry, producerTopicSensorRegistry, this.time,
+                clientTelemetry, this.time,
                 REQUEST_TIMEOUT, 50, transactionManager, apiVersions);
         initializeIdempotentProducerId(producerId, epoch);
 

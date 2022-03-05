@@ -38,7 +38,7 @@ import org.apache.kafka.common.metrics.stats.CumulativeSum;
  * manages for use by the rest of the client layer to access those sensors for manipulation.
  */
 
-public abstract class AbstractSensorRegistry {
+public abstract class AbstractClientMetricRecorder implements ClientMetricRecorder {
 
     protected final Metrics metrics;
 
@@ -46,7 +46,7 @@ public abstract class AbstractSensorRegistry {
 
     protected final List<MetricNameTemplate> allTemplates;
 
-    protected AbstractSensorRegistry(Metrics metrics) {
+    protected AbstractClientMetricRecorder(Metrics metrics) {
         this.metrics = metrics;
         this.tags = this.metrics.config().tags().keySet();
         this.allTemplates = new ArrayList<>();
@@ -86,7 +86,12 @@ public abstract class AbstractSensorRegistry {
         return sumSensor(mn);
     }
 
-    protected MetricNameTemplate createTemplate(String name, String group, String description, Set<String> tags) {
+    protected MetricName createMetricName(String name, String groupName, String description) {
+        MetricNameTemplate mnt = createMetricNameTemplate(name, groupName, description, tags);
+        return metrics.metricInstance(mnt);
+    }
+
+    protected MetricNameTemplate createMetricNameTemplate(String name, String group, String description, Set<String> tags) {
         MetricNameTemplate template = new MetricNameTemplate(name, group, description, tags);
         allTemplates.add(template);
         return template;
