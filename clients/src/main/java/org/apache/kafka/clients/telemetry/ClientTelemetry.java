@@ -22,11 +22,14 @@ import java.util.Optional;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.message.GetTelemetrySubscriptionsResponseData;
+import org.apache.kafka.common.message.PushTelemetryResponseData;
 import org.apache.kafka.common.requests.AbstractRequest;
 
 public interface ClientTelemetry extends Closeable {
 
     int DEFAULT_PUSH_INTERVAL_MS = 5 * 60 * 1000;
+
+    long MAX_TERMINAL_PUSH_WAIT_MS = 60 * 1000;
 
     /**
      * Determines the client's unique client instance ID used for telemetry. This ID is unique to
@@ -54,7 +57,7 @@ public interface ClientTelemetry extends Closeable {
      */
     Optional<String> clientInstanceId(Duration timeout);
 
-    void initiateClose();
+    void initiateClose(Duration timeout);
 
     void setState(TelemetryState state);
 
@@ -68,7 +71,7 @@ public interface ClientTelemetry extends Closeable {
 
     void telemetrySubscriptionSucceeded(GetTelemetrySubscriptionsResponseData data);
 
-    void pushTelemetrySucceeded();
+    void pushTelemetrySucceeded(PushTelemetryResponseData data);
 
     Optional<Long> timeToNextUpdate(long requestTimeoutMs);
 

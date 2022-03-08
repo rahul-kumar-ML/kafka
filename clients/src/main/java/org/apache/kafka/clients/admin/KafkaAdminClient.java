@@ -268,6 +268,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.apache.kafka.clients.telemetry.ClientTelemetry.MAX_TERMINAL_PUSH_WAIT_MS;
 import static org.apache.kafka.common.message.AlterPartitionReassignmentsRequestData.ReassignablePartition;
 import static org.apache.kafka.common.message.AlterPartitionReassignmentsResponseData.ReassignablePartitionResponse;
 import static org.apache.kafka.common.message.AlterPartitionReassignmentsResponseData.ReassignableTopicResponse;
@@ -632,9 +633,13 @@ public class KafkaAdminClient extends AdminClient {
             throw new IllegalArgumentException("The timeout cannot be negative.");
         waitTimeMs = Math.min(TimeUnit.DAYS.toMillis(365), waitTimeMs); // Limit the timeout to a year.
 
-        // This starts the client telemetry termination process, if possible. This is separate
-        // from actually closing the instance, which we do in the .
-        clientTelemetry.initiateClose();
+        // This starts the client telemetry termination process which will attempt to send a
+        // terminal telemetry push, if possible.
+        //
+        // This is a separate step from actually closing the instance, which we do in the
+        // AdminClientRunnable.run method's finally section.
+        if (clientTelemetry != null)
+            clientTelemetry.initiateClose(Duration.ofMillis(Math.min(MAX_TERMINAL_PUSH_WAIT_MS, waitTimeMs)));
 
         long now = time.milliseconds();
         long newHardShutdownTimeMs = now + waitTimeMs;

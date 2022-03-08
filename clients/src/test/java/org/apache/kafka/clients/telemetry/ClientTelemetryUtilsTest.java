@@ -38,9 +38,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class ClientTelemetryImplTest {
+public class ClientTelemetryUtilsTest {
 
     @ParameterizedTest
     @EnumSource(CompressionType.class)
@@ -66,8 +65,8 @@ public class ClientTelemetryImplTest {
     @Test
     public void testValidateMetricNames() {
         // empty metric names
-        assertTrue(ClientTelemetryUtils.validateMetricNames(Collections.emptyList()).isEmpty());
-        assertTrue(ClientTelemetryUtils.validateMetricNames(null).isEmpty());
+        assertEquals(MetricSelector.NONE, ClientTelemetryUtils.validateMetricNames(Collections.emptyList()));
+        assertEquals(MetricSelector.NONE, ClientTelemetryUtils.validateMetricNames(null));
     }
 
     @Test
@@ -96,13 +95,13 @@ public class ClientTelemetryImplTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {-1})
+    @ValueSource(ints = {-1, 0})
     public void testValidatePushIntervalInvalid(int pushIntervalMs) {
         assertEquals(DefaultClientTelemetry.DEFAULT_PUSH_INTERVAL_MS, ClientTelemetryUtils.validatePushIntervalMs(pushIntervalMs));
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, DefaultClientTelemetry.DEFAULT_PUSH_INTERVAL_MS, Integer.MAX_VALUE - 1, Integer.MAX_VALUE})
+    @ValueSource(ints = {DefaultClientTelemetry.DEFAULT_PUSH_INTERVAL_MS, Integer.MAX_VALUE - 1, Integer.MAX_VALUE})
     public void testValidatePushIntervalValid(int pushIntervalMs) {
         assertEquals(pushIntervalMs, ClientTelemetryUtils.validatePushIntervalMs(pushIntervalMs));
     }
@@ -145,6 +144,9 @@ public class ClientTelemetryImplTest {
         // 'Start shutdown w/o having done anything' case
         validStates.add(TelemetryState.terminating_push_needed);
 
+        // 'Shutdown w/o a terminal push' case
+        validStates.add(TelemetryState.terminated);
+
         testValidateTransition(currState, validStates);
     }
 
@@ -161,6 +163,9 @@ public class ClientTelemetryImplTest {
 
         // 'Start shutdown while waiting for the subscription' case
         validStates.add(TelemetryState.terminating_push_needed);
+
+        // 'Shutdown w/o a terminal push' case
+        validStates.add(TelemetryState.terminated);
 
         testValidateTransition(currState, validStates);
     }
@@ -180,6 +185,9 @@ public class ClientTelemetryImplTest {
         // 'Start shutdown while waiting for a telemetry push' case
         validStates.add(TelemetryState.terminating_push_needed);
 
+        // 'Shutdown w/o a terminal push' case
+        validStates.add(TelemetryState.terminated);
+
         testValidateTransition(currState, validStates);
     }
 
@@ -193,6 +201,9 @@ public class ClientTelemetryImplTest {
 
         // 'Start shutdown while we happen to be pushing telemetry' case
         validStates.add(TelemetryState.terminating_push_needed);
+
+        // 'Shutdown w/o a terminal push' case
+        validStates.add(TelemetryState.terminated);
 
         testValidateTransition(currState, validStates);
     }

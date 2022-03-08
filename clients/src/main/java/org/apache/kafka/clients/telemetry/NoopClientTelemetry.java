@@ -20,21 +20,22 @@ import java.time.Duration;
 import java.util.Optional;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.message.GetTelemetrySubscriptionsResponseData;
+import org.apache.kafka.common.message.PushTelemetryResponseData;
 import org.apache.kafka.common.requests.AbstractRequest;
 
 public class NoopClientTelemetry implements ClientTelemetry {
 
     @Override
-    public void close() {
-    }
-
-    @Override
-    public void initiateClose() {
-    }
-
-    @Override
     public Optional<String> clientInstanceId(Duration timeout) {
         return Optional.empty();
+    }
+
+    @Override
+    public void initiateClose(Duration timeout) {
+    }
+
+    @Override
+    public void close() {
     }
 
     @Override
@@ -64,7 +65,7 @@ public class NoopClientTelemetry implements ClientTelemetry {
     }
 
     @Override
-    public void pushTelemetrySucceeded() {
+    public void pushTelemetrySucceeded(PushTelemetryResponseData data) {
     }
 
     @Override

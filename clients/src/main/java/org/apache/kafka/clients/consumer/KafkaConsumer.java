@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.clients.consumer;
 
+import static org.apache.kafka.clients.telemetry.ClientTelemetry.MAX_TERMINAL_PUSH_WAIT_MS;
 import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.create;
 
 import org.apache.kafka.clients.ApiVersions;
@@ -2434,9 +2435,12 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     private void close(long timeoutMs, boolean swallowException) {
         log.trace("Closing the Kafka consumer");
 
-        // This starts the client telemetry termination process, if possible. This is separate
-        // from actually closing the instance, which we do further down.
-        clientTelemetry.initiateClose();
+        // This starts the client telemetry termination process which will attempt to send a
+        // terminal telemetry push, if possible.
+        //
+        // This is a separate step from actually closing the instance, which we do further down.
+        if (clientTelemetry != null)
+            clientTelemetry.initiateClose(Duration.ofMillis(Math.min(MAX_TERMINAL_PUSH_WAIT_MS, timeoutMs)));
 
         AtomicReference<Throwable> firstException = new AtomicReference<>();
         try {

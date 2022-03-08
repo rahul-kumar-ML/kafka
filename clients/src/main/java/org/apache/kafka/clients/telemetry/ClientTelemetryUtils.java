@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.clients.telemetry;
 
+import static org.apache.kafka.clients.telemetry.ClientTelemetry.DEFAULT_PUSH_INTERVAL_MS;
 import static org.apache.kafka.common.Uuid.ZERO_UUID;
 
 import java.io.IOException;
@@ -23,18 +24,15 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.telemetry.ClientInstanceMetricRecorder.ConnectionErrorReason;
+import org.apache.kafka.clients.telemetry.MetricSelector.FilteredMetricSelector;
 import org.apache.kafka.common.KafkaException;
-import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.config.AbstractConfig;
@@ -63,8 +61,6 @@ public class ClientTelemetryUtils {
 
     private static final Logger log = LoggerFactory.getLogger(ClientTelemetryUtils.class);
 
-    public static final int DEFAULT_PUSH_INTERVAL_MS = 5 * 60 * 1000;
-
     @SuppressWarnings("fallthrough")
     public static long timeToNextUpdate(TelemetryState state, TelemetrySubscription subscription, long requestTimeoutMs, Time time) {
         final long t;
@@ -79,23 +75,20 @@ public class ClientTelemetryUtils {
                 break;
 
             case terminating_push_needed:
-            case subscription_needed:
-                // TODO: TELEMETRY_TODO: implement case where previous subscription had no metrics
-                //       and we need to wait pushIntervalMs() before requesting it again.
                 t = 0;
+                break;
+
+            case subscription_needed:
+                if (subscription == null)
+                    t = 0;
+                else
+                    t = timeToNextUpdate(subscription, time);
+
                 break;
 
             case push_needed:
                 if (subscription != null) {
-                    long fetchMs = subscription.fetchMs();
-                    long pushIntervalMs = subscription.pushIntervalMs();
-                    long timeRemainingBeforePush = fetchMs + pushIntervalMs - time.milliseconds();
-
-                    if (timeRemainingBeforePush < 0)
-                        t = 0;
-                    else
-                        t = timeRemainingBeforePush;
-
+                    t = timeToNextUpdate(subscription, time);
                     break;
                 } else {
                     log.warn("Telemetry subscription was null when determining time for next update in state {}", state);
@@ -107,27 +100,34 @@ public class ClientTelemetryUtils {
                 t = Long.MAX_VALUE;
         }
 
-        log.debug("For state {}, returning {} for time to next update", state, t);
         return t;
     }
 
-    public static Set<MetricName> validateMetricNames(List<String> requestedMetrics) {
-        Set<MetricName> set;
+    public static long timeToNextUpdate(TelemetrySubscription subscription, Time time) {
+        long fetchMs = subscription.fetchMs();
+        long pushIntervalMs = subscription.pushIntervalMs();
+        long timeRemainingBeforePush = fetchMs + pushIntervalMs - time.milliseconds();
 
+        final long t;
+
+        if (timeRemainingBeforePush < 0)
+            t = 0;
+        else
+            t = timeRemainingBeforePush;
+
+        return t;
+    }
+
+    public static MetricSelector validateMetricNames(List<String> requestedMetrics) {
         if (requestedMetrics == null || requestedMetrics.isEmpty()) {
-            // no metrics
-            set = Collections.emptySet();
+            return MetricSelector.NONE;
         } else if (requestedMetrics.size() == 1 && requestedMetrics.get(0).isEmpty()) {
-            // TODO: TELEMETRY_TODO: determine the set of all metrics
-            log.trace("Telemetry subscription has specified a single empty metric name; using all metrics");
-            set = new HashSet<>();
+            log.debug("Telemetry subscription has specified a single empty metric name; using all metrics");
+            return MetricSelector.ALL;
         } else {
-            // TODO: TELEMETRY_TODO: prefix string match...
             log.trace("Telemetry subscription has specified to include only metrics that are prefixed with the following strings: {}", requestedMetrics);
-            set = new HashSet<>();
+            return new FilteredMetricSelector(requestedMetrics);
         }
-
-        return set;
     }
 
     public static List<CompressionType> validateAcceptedCompressionTypes(List<Byte> acceptedCompressionTypes) {
@@ -157,7 +157,7 @@ public class ClientTelemetryUtils {
     }
 
     public static int validatePushIntervalMs(int pushIntervalMs) {
-        if (pushIntervalMs < 0) {
+        if (pushIntervalMs <= 0) {
             log.warn("Telemetry subscription push interval value from broker was invalid ({}), substituting a value of {}", pushIntervalMs, DEFAULT_PUSH_INTERVAL_MS);
             return DEFAULT_PUSH_INTERVAL_MS;
         }
@@ -380,6 +380,10 @@ public class ClientTelemetryUtils {
             Collection<TelemetryMetric> telemetryMetrics = currentTelemetryMetrics(metrics,
                 deltaValueStore,
                 subscription.deltaTemporality());
+
+            // Filter down to only the ones the admin is requesting.
+            telemetryMetrics = subscription.metricSelector().filter(telemetryMetrics);
+
             ByteBuffer buf = serialize(telemetryMetrics, compressionType, telemetrySerializer);
             Bytes metricsData =  Bytes.wrap(Utils.readBytes(buf));
 
@@ -398,6 +402,7 @@ public class ClientTelemetryUtils {
             throw new IllegalTelemetryStateException(String.format("Cannot make telemetry request as telemetry is in state: %s", state));
         }
 
+        log.debug("Created new {} and preparing to set state to {}", requestBuilder.getClass().getName(), newState);
         stateConsumer.accept(newState);
         return Optional.of(requestBuilder);
     }

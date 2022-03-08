@@ -16,6 +16,8 @@
  */
 package org.apache.kafka.clients.producer;
 
+import static org.apache.kafka.clients.telemetry.ClientTelemetry.MAX_TERMINAL_PUSH_WAIT_MS;
+
 import java.util.Optional;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientUtils;
@@ -1271,9 +1273,12 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             throw new IllegalArgumentException("The timeout cannot be negative.");
         log.info("Closing the Kafka producer with timeoutMillis = {} ms.", timeoutMs);
 
-        // This starts the client telemetry termination process, if possible. This is separate
-        // from actually closing the instance, which we do further down.
-        clientTelemetry.initiateClose();
+        // This starts the client telemetry termination process which will attempt to send a
+        // terminal telemetry push, if possible.
+        //
+        // This is a separate step from actually closing the instance, which we do further down.
+        if (clientTelemetry != null)
+            clientTelemetry.initiateClose(Duration.ofMillis(Math.min(MAX_TERMINAL_PUSH_WAIT_MS, timeoutMs)));
 
         // this will keep track of the first encountered exception
         AtomicReference<Throwable> firstException = new AtomicReference<>();

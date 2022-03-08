@@ -37,7 +37,7 @@ public class TelemetrySubscription {
     private final List<CompressionType> acceptedCompressionTypes;
     private final long pushIntervalMs;
     private final boolean deltaTemporality;
-    private final Set<MetricName> metricNames;
+    private final MetricSelector metricSelector;
 
     public TelemetrySubscription(long fetchMs,
         long throttleTimeMs,
@@ -46,7 +46,7 @@ public class TelemetrySubscription {
         List<CompressionType> acceptedCompressionTypes,
         long pushIntervalMs,
         boolean deltaTemporality,
-        Set<MetricName> metricNames) {
+        MetricSelector metricSelector) {
         this.fetchMs = fetchMs;
         this.throttleTimeMs = throttleTimeMs;
         this.clientInstanceId = clientInstanceId;
@@ -54,7 +54,7 @@ public class TelemetrySubscription {
         this.acceptedCompressionTypes = Collections.unmodifiableList(acceptedCompressionTypes);
         this.pushIntervalMs = pushIntervalMs;
         this.deltaTemporality = deltaTemporality;
-        this.metricNames = Collections.unmodifiableSet(metricNames);
+        this.metricSelector = metricSelector;
     }
 
     public long fetchMs() {
@@ -85,8 +85,8 @@ public class TelemetrySubscription {
         return deltaTemporality;
     }
 
-    public Set<MetricName> metricNames() {
-        return metricNames;
+    public MetricSelector metricSelector() {
+        return metricSelector;
     }
 
     @Override
@@ -99,7 +99,7 @@ public class TelemetrySubscription {
             .add("acceptedCompressionTypes=" + acceptedCompressionTypes)
             .add("pushIntervalMs=" + pushIntervalMs)
             .add("deltaTemporality=" + deltaTemporality)
-            .add("metricNames=" + metricNames)
+            .add("metricSelector=" + metricSelector)
             .toString();
     }
 }

@@ -1285,24 +1285,6 @@ public class NetworkClient implements KafkaClient {
             return maybeUpdate(now, node);
         }
 
-        public void handleFailedGetTelemetrySubscriptionRequest(KafkaException maybeFatalException) {
-            clientTelemetry.telemetrySubscriptionFailed(maybeFatalException);
-        }
-
-        public void handleFailedPushTelemetryRequest(KafkaException maybeFatalException) {
-            clientTelemetry.pushTelemetryFailed(maybeFatalException);
-        }
-
-        public void handleSuccessfulGetTelemetrySubscriptionResponse(GetTelemetrySubscriptionResponse response) {
-            log.trace("Successfully received GetTelemetrySubscriptionResponse: {}", response);
-            clientTelemetry.telemetrySubscriptionSucceeded(response.data());
-        }
-
-        public void handleSuccessfulPushTelemetryResponse(PushTelemetryResponse response) {
-            log.trace("Successfully received PushTelemetryResponse: {}", response);
-            clientTelemetry.pushTelemetrySucceeded();
-        }
-
         private long maybeUpdate(long now, Node node) {
             String nodeConnectionId = node.idString();
 
@@ -1338,6 +1320,22 @@ public class NetworkClient implements KafkaClient {
             // In either case, we just need to wait for a network event to let us know the selected
             // connection might be usable again.
             return Long.MAX_VALUE;
+        }
+
+        public void handleFailedGetTelemetrySubscriptionRequest(KafkaException maybeFatalException) {
+            clientTelemetry.telemetrySubscriptionFailed(maybeFatalException);
+        }
+
+        public void handleFailedPushTelemetryRequest(KafkaException maybeFatalException) {
+            clientTelemetry.pushTelemetryFailed(maybeFatalException);
+        }
+
+        public void handleSuccessfulGetTelemetrySubscriptionResponse(GetTelemetrySubscriptionResponse response) {
+            clientTelemetry.telemetrySubscriptionSucceeded(response.data());
+        }
+
+        public void handleSuccessfulPushTelemetryResponse(PushTelemetryResponse response) {
+            clientTelemetry.pushTelemetrySucceeded(response.data());
         }
 
     }

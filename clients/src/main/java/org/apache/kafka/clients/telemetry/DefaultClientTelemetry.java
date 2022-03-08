@@ -27,16 +27,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.kafka.common.KafkaException;
-import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.message.GetTelemetrySubscriptionsResponseData;
+import org.apache.kafka.common.message.PushTelemetryResponseData;
 import org.apache.kafka.common.metrics.KafkaMetricsContext;
 import org.apache.kafka.common.metrics.MetricConfig;
 import org.apache.kafka.common.metrics.Metrics;
@@ -67,11 +66,13 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
     private final ReadWriteLock subscriptionLock = new ReentrantReadWriteLock();
 
-    private final Condition subscriptionNotLoaded = subscriptionLock.writeLock().newCondition();
+    private final Condition subscriptionLoaded = subscriptionLock.writeLock().newCondition();
 
     private TelemetrySubscription subscription;
 
     private final ReadWriteLock stateLock = new ReentrantReadWriteLock();
+
+    private final Condition terminalPushInProgress = stateLock.writeLock().newCondition();
 
     private TelemetryState state = TelemetryState.subscription_needed;
 
@@ -115,8 +116,13 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     }
 
     @Override
-    public void initiateClose() {
+    public void initiateClose(Duration timeout) {
         log.trace("initiateClose");
+
+        long timeoutMs = timeout.toMillis();
+
+        if (timeoutMs < 0)
+            throw new IllegalArgumentException("The timeout cannot be negative.");
 
         // If we never had a subscription, we can't really push anything.
         if (!subscription().isPresent()) {
@@ -129,6 +135,19 @@ public class DefaultClientTelemetry implements ClientTelemetry {
         } catch (IllegalTelemetryStateException e) {
             log.warn("Error initiating client telemetry close", e);
         }
+
+        try {
+            stateLock.readLock().unlock();
+
+            try {
+                if (!terminalPushInProgress.await(timeoutMs, TimeUnit.MILLISECONDS))
+                    log.debug("Wait for terminal telemetry push to be submitted has elapsed; may not have actually sent request");
+            } catch (InterruptedException e) {
+                throw new InterruptException(e);
+            }
+        } finally {
+            stateLock.readLock().unlock();
+        }
     }
 
     @Override
@@ -136,11 +155,22 @@ public class DefaultClientTelemetry implements ClientTelemetry {
         log.trace("close");
 
         try {
-            setState(TelemetryState.terminated);
-        } catch (IllegalTelemetryStateException e) {
-            log.warn("Error completing client telemetry close", e);
+            stateLock.writeLock().lock();
+            TelemetryState newState = TelemetryState.terminated;
+
+            if (state != newState) {
+                try {
+                    // This *shouldn't* throw an exception, but let's wrap it anyway so that we're
+                    // sure to close the metrics object.
+                    setState(TelemetryState.terminated);
+                } finally {
+                    metrics.close();
+                }
+            } else {
+                log.debug("Ignoring subsequent {} close", ClientTelemetry.class.getSimpleName());
+            }
         } finally {
-            metrics.close();
+            stateLock.writeLock().unlock();
         }
     }
 
@@ -153,7 +183,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
             // In some cases we have to wait for this signal in the clientInstanceId method so that
             // we know that we have a subscription to pull from.
-            subscriptionNotLoaded.signalAll();
+            subscriptionLoaded.signalAll();
         } finally {
             subscriptionLock.writeLock().unlock();
         }
@@ -194,6 +224,8 @@ public class DefaultClientTelemetry implements ClientTelemetry {
      */
     @Override
     public Optional<String> clientInstanceId(Duration timeout) {
+        log.trace("clientInstanceId");
+
         long timeoutMs = timeout.toMillis();
 
         if (timeoutMs < 0)
@@ -208,10 +240,10 @@ public class DefaultClientTelemetry implements ClientTelemetry {
             if (subscription == null) {
                 // If we have a non-negative timeout and no-subscription, let's wait for one to
                 // be retrieved.
-                log.debug("Waiting for telemetry subscription containing the client instance ID with timeoutMillis = {} ms.", timeoutMs);
+                log.trace("Waiting for telemetry subscription containing the client instance ID with timeoutMillis = {} ms.", timeoutMs);
 
                 try {
-                    if (!subscriptionNotLoaded.await(timeoutMs, TimeUnit.MILLISECONDS))
+                    if (!subscriptionLoaded.await(timeoutMs, TimeUnit.MILLISECONDS))
                         log.debug("Wait for telemetry subscription elapsed; may not have actually loaded it");
                 } catch (InterruptedException e) {
                     throw new InterruptException(e);
@@ -240,8 +272,13 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     public void setState(TelemetryState newState) {
         try {
             stateLock.writeLock().lock();
-            log.trace("Setting state from {} to {}", this.state, newState);
             this.state = this.state.validateTransition(newState);
+            log.trace("Set telemetry state from {} to {}", this.state, newState);
+
+            if (newState == TelemetryState.terminating_push_in_progress) {
+                terminalPushInProgress.signalAll();
+                log.debug("Wait for terminal telemetry push elapsed; may not have actually sent request");
+            }
         } finally {
             stateLock.writeLock().unlock();
         }
@@ -290,10 +327,16 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
     @Override
     public void telemetrySubscriptionSucceeded(GetTelemetrySubscriptionsResponseData data) {
-        Set<MetricName> metricNames = validateMetricNames(data.requestedMetrics());
+        List<String> requestedMetrics = data.requestedMetrics();
+
+        // TODO: TELEMETRY_TODO: this is temporary until we get real data back from broker...
+        requestedMetrics.add("");
+
+        MetricSelector metricSelector = validateMetricNames(requestedMetrics);
         List<CompressionType> acceptedCompressionTypes = validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
         Uuid clientInstanceId = validateClientInstanceId(data.clientInstanceId());
-        int pushIntervalMs = validatePushIntervalMs(data.pushIntervalMs());
+        // TODO: TELEMETRY_TODO: this is temporary until we get real data back from broker...
+        int pushIntervalMs = validatePushIntervalMs(data.pushIntervalMs() > 0 ? data.pushIntervalMs() : 10000);
 
         TelemetrySubscription telemetrySubscription = new TelemetrySubscription(time.milliseconds(),
             data.throttleTimeMs(),
@@ -302,14 +345,14 @@ public class DefaultClientTelemetry implements ClientTelemetry {
             acceptedCompressionTypes,
             pushIntervalMs,
             data.deltaTemporality(),
-            metricNames);
+            metricSelector);
 
         log.debug("Successfully retrieved telemetry subscription: {}", telemetrySubscription);
         setSubscription(telemetrySubscription);
 
-        if (metricNames.isEmpty()) {
-            // TODO: TELEMETRY_TODO: this is the case where no metrics are requested and/or match
-            //                       the filters. We need to wait pushIntervalMs then retry.
+        if (metricSelector == MetricSelector.NONE) {
+            // This is the case where no metrics are requested and/or match the filters. We need
+            // to wait pushIntervalMs then retry.
             setState(TelemetryState.subscription_needed);
         } else {
             setState(TelemetryState.push_needed);
@@ -317,8 +360,8 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     }
 
     @Override
-    public void pushTelemetrySucceeded() {
-        log.trace("Successfully pushed telemetry");
+    public void pushTelemetrySucceeded(PushTelemetryResponseData data) {
+        log.debug("Successfully pushed telemetry; response: {}", data);
 
         TelemetryState state = stateInternal();
 
@@ -332,14 +375,10 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
     @Override
     public Optional<Long> timeToNextUpdate(long requestTimeoutMs) {
-        Optional<TelemetrySubscription> subscription = subscription();
-
-        if (!subscription.isPresent())
-            return Optional.empty();
-
+        TelemetrySubscription subscription = subscriptionInternal();
         TelemetryState state = stateInternal();
-        long t = ClientTelemetryUtils.timeToNextUpdate(state, subscription.get(), requestTimeoutMs, time);
-        log.debug("For state {}, returning {} for time to next update", state, t);
+        long t = ClientTelemetryUtils.timeToNextUpdate(state, subscription, requestTimeoutMs, time);
+        log.trace("For telemetry state {}, returning {} for time to next telemetry update", state, t);
         return Optional.of(t);
     }
 
