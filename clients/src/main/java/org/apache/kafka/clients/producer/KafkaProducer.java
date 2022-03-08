@@ -16,8 +16,6 @@
  */
 package org.apache.kafka.clients.producer;
 
-import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.create;
-
 import java.util.Optional;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientUtils;
@@ -35,8 +33,6 @@ import org.apache.kafka.clients.producer.internals.ProducerInterceptors;
 import org.apache.kafka.clients.producer.internals.ProducerMetadata;
 import org.apache.kafka.clients.producer.internals.ProducerMetrics;
 import org.apache.kafka.clients.telemetry.ClientTelemetryUtils;
-import org.apache.kafka.clients.telemetry.ProducerMetricRecorder;
-import org.apache.kafka.clients.telemetry.ProducerTopicMetricRecorder;
 import org.apache.kafka.clients.producer.internals.RecordAccumulator;
 import org.apache.kafka.clients.producer.internals.Sender;
 import org.apache.kafka.clients.producer.internals.TransactionManager;
@@ -266,8 +262,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final TransactionManager transactionManager;
 
     private final ClientTelemetry clientTelemetry;
-    private final ProducerMetricRecorder producerMetricRecorder;
-    private final ProducerTopicMetricRecorder producerTopicMetricRecorder;
 
     /**
      * A producer is instantiated by providing a set of key-value pairs as configuration. Valid configuration strings
@@ -368,8 +362,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             this.metrics = new Metrics(metricConfig, reporters, time, metricsContext);
             this.producerMetrics = new KafkaProducerMetrics(metrics);
             this.clientTelemetry = ClientTelemetryUtils.create(config, time, clientId);
-            this.producerMetricRecorder = clientTelemetry.producerMetricRecorder();
-            this.producerTopicMetricRecorder = clientTelemetry.producerTopicMetricRecorder();
             this.partitioner = config.getConfiguredInstance(
                     ProducerConfig.PARTITIONER_CLASS_CONFIG,
                     Partitioner.class,
@@ -1279,6 +1271,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             throw new IllegalArgumentException("The timeout cannot be negative.");
         log.info("Closing the Kafka producer with timeoutMillis = {} ms.", timeoutMs);
 
+        // This starts the client telemetry termination process, if possible. This is separate
+        // from actually closing the instance, which we do further down.
+        clientTelemetry.initiateClose();
+
         // this will keep track of the first encountered exception
         AtomicReference<Throwable> firstException = new AtomicReference<>();
         boolean invokedFromCallback = Thread.currentThread() == this.ioThread;
@@ -1318,8 +1314,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
         Utils.closeQuietly(interceptors, "producer interceptors", firstException);
         Utils.closeQuietly(producerMetrics, "producer metrics wrapper", firstException);
-        // TODO: TELEMETRY_TODO: figure out where/how to properly close telemetry metrics given
-        //       that we need to write out our terminal set of metrics when closing...
         Utils.closeQuietly(clientTelemetry, "client telemetry", firstException);
         Utils.closeQuietly(metrics, "producer metrics", firstException);
         Utils.closeQuietly(keySerializer, "producer keySerializer", firstException);

@@ -1042,9 +1042,8 @@ public class MockAdminClient extends AdminClient {
     }
 
     @Override
-    public Optional<String> clientInstanceId(Duration duration) {
-        // TODO: TELEMETRY_TODO: does this need to be anything realistic?
-        return Optional.of("admin-client-1");
+    public Optional<String> clientInstanceId(Duration timeout) {
+        return Optional.empty();
     }
 
     @Override

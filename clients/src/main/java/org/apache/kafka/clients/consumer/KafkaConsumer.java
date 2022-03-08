@@ -2433,6 +2433,11 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
     private void close(long timeoutMs, boolean swallowException) {
         log.trace("Closing the Kafka consumer");
+
+        // This starts the client telemetry termination process, if possible. This is separate
+        // from actually closing the instance, which we do further down.
+        clientTelemetry.initiateClose();
+
         AtomicReference<Throwable> firstException = new AtomicReference<>();
         try {
             if (coordinator != null)
@@ -2444,8 +2449,6 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         Utils.closeQuietly(fetcher, "fetcher", firstException);
         Utils.closeQuietly(interceptors, "consumer interceptors", firstException);
         Utils.closeQuietly(kafkaConsumerMetrics, "kafka consumer metrics", firstException);
-        // TODO: TELEMETRY_TODO: figure out where/how to properly close telemetry metrics given that
-        //       we need to write out our terminal set of metrics when closing...
         Utils.closeQuietly(clientTelemetry, "client telemetry", firstException);
         Utils.closeQuietly(metrics, "consumer metrics", firstException);
         Utils.closeQuietly(client, "consumer network client", firstException);

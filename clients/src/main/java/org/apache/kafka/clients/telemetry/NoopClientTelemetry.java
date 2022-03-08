@@ -29,6 +29,10 @@ public class NoopClientTelemetry implements ClientTelemetry {
     }
 
     @Override
+    public void initiateClose() {
+    }
+
+    @Override
     public Optional<String> clientInstanceId(Duration timeout) {
         return Optional.empty();
     }
@@ -38,13 +42,13 @@ public class NoopClientTelemetry implements ClientTelemetry {
     }
 
     @Override
-    public TelemetryState state() {
-        throw new UnsupportedOperationException();
+    public Optional<TelemetryState> state() {
+        return Optional.empty();
     }
 
     @Override
-    public TelemetrySubscription subscription() {
-        throw new UnsupportedOperationException();
+    public Optional<TelemetrySubscription> subscription() {
+        return Optional.empty();
     }
 
     @Override
@@ -64,13 +68,13 @@ public class NoopClientTelemetry implements ClientTelemetry {
     }
 
     @Override
-    public long timeToNextUpdate() {
-        return Long.MAX_VALUE;
+    public Optional<Long> timeToNextUpdate(long requestTimeoutMs) {
+        return Optional.empty();
     }
 
     @Override
-    public AbstractRequest.Builder<?> createRequest() {
-        throw new UnsupportedOperationException();
+    public Optional<AbstractRequest.Builder<?>> createRequest() {
+        return Optional.empty();
     }
 
     @Override

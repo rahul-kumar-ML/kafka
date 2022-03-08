@@ -23,7 +23,6 @@ import org.apache.kafka.clients.telemetry.ClientInstanceMetricRecorder.Connectio
 import org.apache.kafka.clients.telemetry.ClientInstanceMetricRecorder.RequestErrorReason;
 import org.apache.kafka.clients.telemetry.ClientTelemetry;
 import org.apache.kafka.clients.telemetry.NoopClientTelemetry;
-import org.apache.kafka.clients.telemetry.TelemetryState;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Node;
@@ -1269,19 +1268,13 @@ public class NetworkClient implements KafkaClient {
         }
 
         public long maybeUpdate(long now) {
-            TelemetryState state = clientTelemetry.state();
+            Optional<Long> timeToNextUpdateOpt = clientTelemetry.timeToNextUpdate(defaultRequestTimeoutMs);
 
-            if (state == TelemetryState.terminated) {
-                log.debug("Ignoring attempt to determine telemetry update once terminated");
+            if (!timeToNextUpdateOpt.isPresent())
                 return Long.MAX_VALUE;
-            }
 
-            long timeToNextUpdate = clientTelemetry.timeToNextUpdate();
-            long waitForFetch = state.isNetworkState() ? defaultRequestTimeoutMs : 0;
-            long timeout = Math.max(timeToNextUpdate, waitForFetch);
-            if (timeout > 0) {
-                return timeout;
-            }
+            if (timeToNextUpdateOpt.get() > 0)
+                return timeToNextUpdateOpt.get();
 
             Node node = leastLoadedNode(now);
             if (node == null) {
@@ -1314,7 +1307,12 @@ public class NetworkClient implements KafkaClient {
             String nodeConnectionId = node.idString();
 
             if (canSendRequest(nodeConnectionId, now)) {
-                AbstractRequest.Builder<?> request = clientTelemetry.createRequest();
+                Optional<AbstractRequest.Builder<?>> requestOpt = clientTelemetry.createRequest();
+
+                if (!requestOpt.isPresent())
+                    return Long.MAX_VALUE;
+
+                AbstractRequest.Builder<?> request = requestOpt.get();
                 ClientRequest clientRequest = newClientRequest(nodeConnectionId, request, now, true);
                 doSend(clientRequest, true, now);
                 return defaultRequestTimeoutMs;

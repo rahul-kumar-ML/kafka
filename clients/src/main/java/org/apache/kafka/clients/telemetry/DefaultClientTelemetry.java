@@ -16,24 +16,22 @@
  */
 package org.apache.kafka.clients.telemetry;
 
-import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.currentTelemetryMetrics;
-import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.preferredCompressionType;
-import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.serialize;
 import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.validateAcceptedCompressionTypes;
 import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.validateClientInstanceId;
 import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.validateMetricNames;
 import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.validatePushIntervalMs;
-import static org.apache.kafka.common.Uuid.ZERO_UUID;
 
-import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.Uuid;
@@ -45,11 +43,7 @@ import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.MetricsContext;
 import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.requests.AbstractRequest;
-import org.apache.kafka.common.requests.GetTelemetrySubscriptionRequest;
-import org.apache.kafka.common.requests.PushTelemetryRequest;
-import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Time;
-import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,11 +65,13 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
     private final TelemetrySerializer telemetrySerializer;
 
-    private final Object subscriptionLock = new Object();
+    private final ReadWriteLock subscriptionLock = new ReentrantReadWriteLock();
+
+    private final Condition subscriptionNotLoaded = subscriptionLock.writeLock().newCondition();
 
     private TelemetrySubscription subscription;
 
-    private final Object stateLock = new Object();
+    private final ReadWriteLock stateLock = new ReentrantReadWriteLock();
 
     private TelemetryState state = TelemetryState.subscription_needed;
 
@@ -119,36 +115,60 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     }
 
     @Override
-    public void close() {
-        log.trace("close");
-        boolean shouldClose = false;
+    public void initiateClose() {
+        log.trace("initiateClose");
 
-        synchronized (stateLock) {
-            TelemetryState currState = state();
-
-            // TODO: TELEMETRY_TODO: support ability to close multiple times.
-            if (currState != TelemetryState.terminating) {
-                shouldClose = true;
-                setState(TelemetryState.terminating);
-            }
+        // If we never had a subscription, we can't really push anything.
+        if (!subscription().isPresent()) {
+            log.debug("Telemetry subscription not loaded, not attempting terminating push");
+            return;
         }
 
-        if (shouldClose) {
-            telemetryMetricsReporter.close();
+        try {
+            setState(TelemetryState.terminating_push_needed);
+        } catch (IllegalTelemetryStateException e) {
+            log.warn("Error initiating client telemetry close", e);
+        }
+    }
+
+    @Override
+    public void close() {
+        log.trace("close");
+
+        try {
+            setState(TelemetryState.terminated);
+        } catch (IllegalTelemetryStateException e) {
+            log.warn("Error completing client telemetry close", e);
+        } finally {
             metrics.close();
         }
     }
 
-    private void setSubscription(TelemetrySubscription subscription) {
-        synchronized (subscriptionLock) {
-            this.subscription = subscription;
-            subscriptionLock.notifyAll();
+    private void setSubscription(TelemetrySubscription newSubscription) {
+        try {
+            subscriptionLock.writeLock().lock();
+
+            log.trace("Setting subscription from {} to {}", this.subscription, newSubscription);
+            this.subscription = newSubscription;
+
+            // In some cases we have to wait for this signal in the clientInstanceId method so that
+            // we know that we have a subscription to pull from.
+            subscriptionNotLoaded.signalAll();
+        } finally {
+            subscriptionLock.writeLock().unlock();
         }
     }
 
-    public TelemetrySubscription subscription() {
-        synchronized (subscriptionLock) {
+    public Optional<TelemetrySubscription> subscription() {
+        return Optional.ofNullable(subscriptionInternal());
+    }
+
+    public TelemetrySubscription subscriptionInternal() {
+        try {
+            subscriptionLock.readLock().lock();
             return subscription;
+        } finally {
+            subscriptionLock.readLock().unlock();
         }
     }
 
@@ -175,48 +195,69 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     @Override
     public Optional<String> clientInstanceId(Duration timeout) {
         long timeoutMs = timeout.toMillis();
+
         if (timeoutMs < 0)
             throw new IllegalArgumentException("The timeout cannot be negative.");
 
-        synchronized (subscriptionLock) {
+        TelemetryState state = stateInternal();
+
+        try {
+            subscriptionLock.readLock().lock();
+
+            // We can use the instance variable directly here because we're handling the locking...
             if (subscription == null) {
                 // If we have a non-negative timeout and no-subscription, let's wait for one to
                 // be retrieved.
                 log.debug("Waiting for telemetry subscription containing the client instance ID with timeoutMillis = {} ms.", timeoutMs);
 
                 try {
-                    subscriptionLock.wait(timeoutMs);
+                    if (!subscriptionNotLoaded.await(timeoutMs, TimeUnit.MILLISECONDS))
+                        log.debug("Wait for telemetry subscription elapsed; may not have actually loaded it");
                 } catch (InterruptedException e) {
                     throw new InterruptException(e);
                 }
             }
 
-            if (subscription == null)
-                throw new IllegalTelemetryStateException("Client instance ID could not be retrieved with timeout: " + timeout);
+            if (subscription == null) {
+                log.debug("Client instance ID could not be retrieved with timeout {}", timeout);
+                return Optional.empty();
+            }
 
             Uuid clientInstanceId = subscription.clientInstanceId();
 
             if (clientInstanceId == null) {
-                log.debug("Client instance ID was null in telemetry subscription while in state {}", state());
+                log.debug("Client instance ID was null in telemetry subscription while in state {}", state);
                 return Optional.empty();
             }
 
             return Optional.of(clientInstanceId.toString());
+        } finally {
+            subscriptionLock.readLock().unlock();
         }
     }
 
     @Override
-    public void setState(TelemetryState state) {
-        synchronized (stateLock) {
-            log.trace("Setting state from {} to {}", this.state, state);
-            this.state = this.state.validateTransition(state);
+    public void setState(TelemetryState newState) {
+        try {
+            stateLock.writeLock().lock();
+            log.trace("Setting state from {} to {}", this.state, newState);
+            this.state = this.state.validateTransition(newState);
+        } finally {
+            stateLock.writeLock().unlock();
         }
     }
 
     @Override
-    public TelemetryState state() {
-        synchronized (stateLock) {
+    public Optional<TelemetryState> state() {
+        return Optional.of(stateInternal());
+    }
+
+    private TelemetryState stateInternal() {
+        try {
+            stateLock.readLock().lock();
             return state;
+        } finally {
+            stateLock.readLock().unlock();
         }
     }
 
@@ -225,7 +266,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
         if (error != null)
             log.warn("Failed to retrieve telemetry subscription; using existing subscription", error);
         else
-            log.warn("Failed to retrieve telemetry subscription; using existing subscription");
+            log.warn("Failed to retrieve telemetry subscription; using existing subscription", new Exception());
 
         setState(TelemetryState.subscription_needed);
     }
@@ -237,7 +278,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
         else
             log.warn("Failed to push telemetry", new Exception());
 
-        TelemetryState state = state();
+        TelemetryState state = stateInternal();
 
         if (state == TelemetryState.push_in_progress)
             setState(TelemetryState.subscription_needed);
@@ -279,7 +320,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     public void pushTelemetrySucceeded() {
         log.trace("Successfully pushed telemetry");
 
-        TelemetryState state = state();
+        TelemetryState state = stateInternal();
 
         if (state == TelemetryState.push_in_progress)
             setState(TelemetryState.subscription_needed);
@@ -290,47 +331,26 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     }
 
     @Override
-    public long timeToNextUpdate() {
-        TelemetryState s = state();
-        TelemetrySubscription subscription = subscription();
-        long t = ClientTelemetryUtils.timeToNextUpdate(s, subscription, time);
-        log.debug("For state {}, returning {} for time to next update", s, t);
-        return t;
+    public Optional<Long> timeToNextUpdate(long requestTimeoutMs) {
+        Optional<TelemetrySubscription> subscription = subscription();
+
+        if (!subscription.isPresent())
+            return Optional.empty();
+
+        TelemetryState state = stateInternal();
+        long t = ClientTelemetryUtils.timeToNextUpdate(state, subscription.get(), requestTimeoutMs, time);
+        log.debug("For state {}, returning {} for time to next update", state, t);
+        return Optional.of(t);
     }
 
     @Override
-    public AbstractRequest.Builder<?> createRequest() {
-        TelemetrySubscription subscription = subscription();
-
-        if (state() == TelemetryState.subscription_needed) {
-            setState(TelemetryState.subscription_in_progress);
-            Uuid clientInstanceId = subscription != null ? subscription.clientInstanceId() : ZERO_UUID;
-            return new GetTelemetrySubscriptionRequest.Builder(clientInstanceId);
-        } else if (state() == TelemetryState.push_needed) {
-            if (subscription == null)
-                throw new IllegalStateException(String.format("Telemetry state is %s but subscription is null", state()));
-
-            boolean terminating = state() == TelemetryState.terminating;
-            CompressionType compressionType = preferredCompressionType(subscription.acceptedCompressionTypes());
-            Collection<TelemetryMetric> telemetryMetrics = currentTelemetryMetrics(telemetryMetricsReporter.current(),
-                deltaValueStore,
-                subscription.deltaTemporality());
-            ByteBuffer buf = serialize(telemetryMetrics, compressionType, telemetrySerializer);
-            Bytes metricsData =  Bytes.wrap(Utils.readBytes(buf));
-
-            if (terminating)
-                setState(TelemetryState.terminating_push_in_progress);
-            else
-                setState(TelemetryState.push_in_progress);
-
-            return new PushTelemetryRequest.Builder(subscription.clientInstanceId(),
-                subscription.subscriptionId(),
-                terminating,
-                compressionType,
-                metricsData);
-        } else {
-            throw new IllegalTelemetryStateException(String.format("Cannot make telemetry request as telemetry is in state: %s", state()));
-        }
+    public Optional<AbstractRequest.Builder<?>> createRequest() {
+        return ClientTelemetryUtils.createRequest(stateInternal(),
+            subscription().orElse(null),
+            telemetrySerializer,
+            telemetryMetricsReporter.current(),
+            deltaValueStore,
+            this::setState);
     }
 
     @Override

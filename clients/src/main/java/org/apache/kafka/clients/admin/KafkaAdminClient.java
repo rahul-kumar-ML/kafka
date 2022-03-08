@@ -631,6 +631,11 @@ public class KafkaAdminClient extends AdminClient {
         if (waitTimeMs < 0)
             throw new IllegalArgumentException("The timeout cannot be negative.");
         waitTimeMs = Math.min(TimeUnit.DAYS.toMillis(365), waitTimeMs); // Limit the timeout to a year.
+
+        // This starts the client telemetry termination process, if possible. This is separate
+        // from actually closing the instance, which we do in the .
+        clientTelemetry.initiateClose();
+
         long now = time.milliseconds();
         long newHardShutdownTimeMs = now + waitTimeMs;
         long prev = INVALID_SHUTDOWN_TIME;
@@ -1355,6 +1360,7 @@ public class KafkaAdminClient extends AdminClient {
                     log.info("Timed out {} remaining operation(s) during close.", numTimedOut);
                 }
                 closeQuietly(client, "KafkaClient");
+                closeQuietly(clientTelemetry, "client metrics");
                 closeQuietly(metrics, "Metrics");
                 log.debug("Exiting AdminClientRunnable thread.");
             }

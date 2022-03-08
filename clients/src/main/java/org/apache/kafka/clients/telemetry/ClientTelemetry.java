@@ -54,11 +54,13 @@ public interface ClientTelemetry extends Closeable {
      */
     Optional<String> clientInstanceId(Duration timeout);
 
+    void initiateClose();
+
     void setState(TelemetryState state);
 
-    TelemetryState state();
+    Optional<TelemetryState> state();
 
-    TelemetrySubscription subscription();
+    Optional<TelemetrySubscription> subscription();
 
     void telemetrySubscriptionFailed(Throwable error);
 
@@ -68,9 +70,9 @@ public interface ClientTelemetry extends Closeable {
 
     void pushTelemetrySucceeded();
 
-    long timeToNextUpdate();
+    Optional<Long> timeToNextUpdate(long requestTimeoutMs);
 
-    AbstractRequest.Builder<?> createRequest();
+    Optional<AbstractRequest.Builder<?>> createRequest();
 
     ClientInstanceMetricRecorder clientInstanceMetricRecorder();
 

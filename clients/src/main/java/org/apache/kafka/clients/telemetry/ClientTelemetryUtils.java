@@ -16,6 +16,8 @@
  */
 package org.apache.kafka.clients.telemetry;
 
+import static org.apache.kafka.common.Uuid.ZERO_UUID;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -24,7 +26,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -45,8 +49,13 @@ import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.record.DefaultRecord;
 import org.apache.kafka.common.record.LegacyRecord;
 import org.apache.kafka.common.record.RecordBatch;
+import org.apache.kafka.common.requests.AbstractRequest;
+import org.apache.kafka.common.requests.GetTelemetrySubscriptionRequest;
+import org.apache.kafka.common.requests.PushTelemetryRequest;
 import org.apache.kafka.common.utils.ByteBufferOutputStream;
+import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.Time;
+import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,32 +65,49 @@ public class ClientTelemetryUtils {
 
     public static final int DEFAULT_PUSH_INTERVAL_MS = 5 * 60 * 1000;
 
-    public static long timeToNextUpdate(TelemetryState s, TelemetrySubscription subscription, Time time) {
-        long t = 0;
+    @SuppressWarnings("fallthrough")
+    public static long timeToNextUpdate(TelemetryState state, TelemetrySubscription subscription, long requestTimeoutMs, Time time) {
+        final long t;
 
-        if (s == TelemetryState.subscription_needed) {
-            // TODO: TELEMETRY_TODO: verify
-            t = 0;
+        switch (state) {
+            case subscription_in_progress:
+            case push_in_progress:
+            case terminating_push_in_progress:
+                // We have network requests in progress, so wait the amount of the requestTimeout
+                // as provided.
+                t = requestTimeoutMs;
+                break;
 
-            // TODO: TELEMETRY_TODO: implement case where previous subscription had no metrics and
-            //                       we need to wait pushIntervalMs() before requesting it again.
-        } else  if (s == TelemetryState.terminated) {
-            // TODO: TELEMETRY_TODO: verify and add a good error message
-            throw new IllegalTelemetryStateException();
-        } else {
-            long milliseconds = time.milliseconds();
+            case terminating_push_needed:
+            case subscription_needed:
+                // TODO: TELEMETRY_TODO: implement case where previous subscription had no metrics
+                //       and we need to wait pushIntervalMs() before requesting it again.
+                t = 0;
+                break;
 
-            if (subscription != null) {
-                long fetchMs = subscription.fetchMs();
-                long pushIntervalMs = subscription.pushIntervalMs();
-                t = fetchMs + pushIntervalMs - milliseconds;
+            case push_needed:
+                if (subscription != null) {
+                    long fetchMs = subscription.fetchMs();
+                    long pushIntervalMs = subscription.pushIntervalMs();
+                    long timeRemainingBeforePush = fetchMs + pushIntervalMs - time.milliseconds();
 
-                if (t < 0)
-                    t = 0;
-            }
+                    if (timeRemainingBeforePush < 0)
+                        t = 0;
+                    else
+                        t = timeRemainingBeforePush;
+
+                    break;
+                } else {
+                    log.warn("Telemetry subscription was null when determining time for next update in state {}", state);
+                    // Fall through...
+                }
+
+            default:
+                // Should never get to here
+                t = Long.MAX_VALUE;
         }
 
-        log.debug("For state {}, returning {} for time to next update", s, t);
+        log.debug("For state {}, returning {} for time to next update", state, t);
         return t;
     }
 
@@ -105,11 +131,9 @@ public class ClientTelemetryUtils {
     }
 
     public static List<CompressionType> validateAcceptedCompressionTypes(List<Byte> acceptedCompressionTypes) {
-        List<CompressionType> list = null;
+        List<CompressionType> list = new ArrayList<>();
 
         if (acceptedCompressionTypes != null && !acceptedCompressionTypes.isEmpty()) {
-            list = new ArrayList<>();
-
             for (Byte b : acceptedCompressionTypes) {
                 int compressionId = b.intValue();
 
@@ -117,16 +141,10 @@ public class ClientTelemetryUtils {
                     CompressionType compressionType = CompressionType.forId(compressionId);
                     list.add(compressionType);
                 } catch (IllegalArgumentException e) {
-                    log.warn("Accepted compression type with ID {} provided by broker is not a known compression type; ignoring", compressionId);
+                    log.warn("Accepted compression type with ID {} provided by broker is not a known compression type; ignoring", compressionId, e);
                 }
             }
         }
-
-        // If the set of accepted compression types provided by the server was empty or had
-        // nothing valid in it, let's just return a non-null list, and we'll just end up using
-        // no compression.
-        if (list == null || list.isEmpty())
-            list = Collections.emptyList();
 
         return list;
     }
@@ -135,7 +153,7 @@ public class ClientTelemetryUtils {
         if (clientInstanceId == null)
             throw new IllegalArgumentException("clientInstanceId must be non-null");
 
-        return clientInstanceId.equals(Uuid.ZERO_UUID) ? Uuid.randomUuid() : clientInstanceId;
+        return clientInstanceId;
     }
 
     public static int validatePushIntervalMs(int pushIntervalMs) {
@@ -336,6 +354,52 @@ public class ClientTelemetryUtils {
             default:
                 return "all";
         }
+    }
+
+    public static Optional<AbstractRequest.Builder<?>> createRequest(TelemetryState state,
+        TelemetrySubscription subscription,
+        TelemetrySerializer telemetrySerializer,
+        Collection<KafkaMetric> metrics,
+        DeltaValueStore deltaValueStore,
+        Consumer<TelemetryState> stateConsumer) {
+        final TelemetryState newState;
+        final AbstractRequest.Builder<?> requestBuilder;
+
+        if (state == TelemetryState.subscription_needed) {
+            Uuid clientInstanceId = subscription != null ? subscription.clientInstanceId() : ZERO_UUID;
+            requestBuilder = new GetTelemetrySubscriptionRequest.Builder(clientInstanceId);
+            newState = TelemetryState.subscription_in_progress;
+        } else if (state == TelemetryState.push_needed || state == TelemetryState.terminating_push_needed) {
+            if (subscription == null) {
+                log.warn("Telemetry state is {} but subscription is null; not sending telemetry", state);
+                return Optional.empty();
+            }
+
+            boolean terminating = state == TelemetryState.terminating_push_needed;
+            CompressionType compressionType = preferredCompressionType(subscription.acceptedCompressionTypes());
+            Collection<TelemetryMetric> telemetryMetrics = currentTelemetryMetrics(metrics,
+                deltaValueStore,
+                subscription.deltaTemporality());
+            ByteBuffer buf = serialize(telemetryMetrics, compressionType, telemetrySerializer);
+            Bytes metricsData =  Bytes.wrap(Utils.readBytes(buf));
+
+            requestBuilder = new PushTelemetryRequest.Builder(subscription.clientInstanceId(),
+                subscription.subscriptionId(),
+                terminating,
+                compressionType,
+                metricsData);
+
+            if (terminating)
+                newState = TelemetryState.terminating_push_in_progress;
+            else
+                newState = TelemetryState.push_in_progress;
+
+        } else {
+            throw new IllegalTelemetryStateException(String.format("Cannot make telemetry request as telemetry is in state: %s", state));
+        }
+
+        stateConsumer.accept(newState);
+        return Optional.of(requestBuilder);
     }
 
 }

@@ -40,7 +40,9 @@ class TelemetryMetricsTest extends IntegrationTestHarness {
     assertNotNull(clientTelemetry)
 
     val subscription = clientTelemetry.subscription
-    assertEquals(subscription.clientInstanceId.toString, clientInstanceId)
+
+    if (subscription.isPresent)
+      assertEquals(subscription.get().clientInstanceId.toString, clientInstanceId)
 
     assertEquals(TelemetryState.subscription_in_progress, clientTelemetry.state)
   }
@@ -55,7 +57,7 @@ class TelemetryMetricsTest extends IntegrationTestHarness {
     producer.send(record)
 
     val clientInstanceId = producer.clientInstanceId(Duration.ofSeconds(1))
-    assertNull(clientInstanceId)
+    assertFalse(clientInstanceId.isPresent)
   }
 
 }

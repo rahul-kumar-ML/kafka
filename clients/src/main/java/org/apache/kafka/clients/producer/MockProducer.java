@@ -368,9 +368,8 @@ public class MockProducer<K, V> implements Producer<K, V> {
     }
 
     @Override
-    public Optional<String> clientInstanceId(Duration duration) {
-        // TODO: TELEMETRY_TODO: does this need to be anything realistic?
-        return Optional.of("producer-client-1");
+    public Optional<String> clientInstanceId(Duration timeout) {
+        return Optional.empty();
     }
 
     public Map<MetricName, Metric> metrics() {

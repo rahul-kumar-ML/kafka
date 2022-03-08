@@ -33,7 +33,7 @@ public enum TelemetryState {
     subscription_in_progress,
     push_needed,
     push_in_progress,
-    terminating,
+    terminating_push_needed,
     terminating_push_in_progress,
     terminated;
 
@@ -46,7 +46,7 @@ public enum TelemetryState {
                     // If we need a subscription, the main thing we can do is request one.
                     //
                     // However, it's still possible that we don't get very far before terminating.
-                    VALID_NEXT_STATES.put(currState, Arrays.asList(subscription_in_progress, terminating));
+                    VALID_NEXT_STATES.put(currState, Arrays.asList(subscription_in_progress, terminating_push_needed));
                     break;
 
                 case subscription_in_progress:
@@ -57,7 +57,7 @@ public enum TelemetryState {
                     //
                     // As before, it's possible that we don't get our response before we have to
                     // terminate.
-                    VALID_NEXT_STATES.put(currState, Arrays.asList(push_needed, subscription_needed, terminating));
+                    VALID_NEXT_STATES.put(currState, Arrays.asList(push_needed, subscription_needed, terminating_push_needed));
                     break;
 
                 case push_needed:
@@ -69,7 +69,7 @@ public enum TelemetryState {
                     //
                     // But guess what? Yep - it's possible that we don't get to push before we have
                     // to terminate.
-                    VALID_NEXT_STATES.put(currState, Arrays.asList(push_in_progress, subscription_needed, terminating));
+                    VALID_NEXT_STATES.put(currState, Arrays.asList(push_in_progress, subscription_needed, terminating_push_needed));
                     break;
 
                 case push_in_progress:
@@ -85,10 +85,10 @@ public enum TelemetryState {
                     // So in either case, noting that we're now waiting for a subscription is OK.
                     //
                     // Again, it's possible that we don't get our response before we have to terminate.
-                    VALID_NEXT_STATES.put(currState, Arrays.asList(subscription_needed, terminating));
+                    VALID_NEXT_STATES.put(currState, Arrays.asList(subscription_needed, terminating_push_needed));
                     break;
 
-                case terminating:
+                case terminating_push_needed:
                     // If we are moving out of this state, we are hopefully doing so because we're
                     // going to try to send our last push. Either that or we want to be fully
                     // terminated.
@@ -110,10 +110,6 @@ public enum TelemetryState {
                     throw new IllegalStateException(currState + " is not a valid " + TelemetryState.class.getName());
             }
         }
-    }
-
-    public boolean isNetworkState() {
-        return this == TelemetryState.subscription_in_progress || this == TelemetryState.push_in_progress || this == TelemetryState.terminating_push_in_progress;
     }
 
     /**

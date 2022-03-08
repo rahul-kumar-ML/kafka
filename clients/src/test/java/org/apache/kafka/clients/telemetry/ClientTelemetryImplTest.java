@@ -143,7 +143,7 @@ public class ClientTelemetryImplTest {
         validStates.add(TelemetryState.subscription_in_progress);
 
         // 'Start shutdown w/o having done anything' case
-        validStates.add(TelemetryState.terminating);
+        validStates.add(TelemetryState.terminating_push_needed);
 
         testValidateTransition(currState, validStates);
     }
@@ -160,7 +160,7 @@ public class ClientTelemetryImplTest {
         validStates.add(TelemetryState.subscription_needed);
 
         // 'Start shutdown while waiting for the subscription' case
-        validStates.add(TelemetryState.terminating);
+        validStates.add(TelemetryState.terminating_push_needed);
 
         testValidateTransition(currState, validStates);
     }
@@ -178,7 +178,7 @@ public class ClientTelemetryImplTest {
         validStates.add(TelemetryState.subscription_needed);
 
         // 'Start shutdown while waiting for a telemetry push' case
-        validStates.add(TelemetryState.terminating);
+        validStates.add(TelemetryState.terminating_push_needed);
 
         testValidateTransition(currState, validStates);
     }
@@ -192,14 +192,14 @@ public class ClientTelemetryImplTest {
         validStates.add(TelemetryState.subscription_needed);
 
         // 'Start shutdown while we happen to be pushing telemetry' case
-        validStates.add(TelemetryState.terminating);
+        validStates.add(TelemetryState.terminating_push_needed);
 
         testValidateTransition(currState, validStates);
     }
 
     @Test
     public void testValidateTransitionForTerminating() {
-        TelemetryState currState = TelemetryState.terminating;
+        TelemetryState currState = TelemetryState.terminating_push_needed;
 
         List<TelemetryState> validStates = new ArrayList<>();
         // Happy path...
