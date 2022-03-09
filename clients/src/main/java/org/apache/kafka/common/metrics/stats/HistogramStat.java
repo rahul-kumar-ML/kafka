@@ -29,11 +29,13 @@ import java.util.Map;
  */
 
 public class HistogramStat extends Histogram {
+
     private final BinScheme binScheme;
     private final MetricName metricName;
     private final List<Bucket> buckets;
 
     public HistogramStat(BinScheme binScheme, MetricName metricName) {
+
         super(binScheme);
         this.binScheme = binScheme;
         this.metricName = metricName;
@@ -43,7 +45,7 @@ public class HistogramStat extends Histogram {
     private static List<LinearHistogram.Bucket> initializeHistogramBuckets(MetricName metricName, BinScheme binScheme) {
         List<LinearHistogram.Bucket> buckets = new ArrayList<>();
         double lowerBound = 0;
-        for (int i = 0;i < binScheme.bins();i++) {
+        for (int i = 0; i < binScheme.bins(); i++) {
             String name = metricName.name();
             Map<String, String> tags = new HashMap<>(metricName.tags());
             tags.put("lower_bound", String.valueOf(lowerBound));
@@ -61,11 +63,17 @@ public class HistogramStat extends Histogram {
         return buckets;
     }
 
-    public BinScheme getBinScheme() { return binScheme; }
+    public BinScheme getBinScheme() {
+        return binScheme;
+    }
 
-    public List<Bucket> getBuckets() { return buckets; }
+    public List<Bucket> getBuckets() {
+        return buckets;
+    }
 
-    public MetricName getMetricName() { return metricName; }
+    public MetricName getMetricName() {
+        return metricName;
+    }
 
     static class Bucket {
 
@@ -77,7 +85,12 @@ public class HistogramStat extends Histogram {
             this.value = value;
         }
 
-        public MetricName name() { return this.name; }
-        public double value() { return this.value; }
+        public MetricName name() {
+            return this.name;
+        }
+
+        public double value() {
+            return this.value;
+        }
     }
 }

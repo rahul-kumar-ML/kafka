@@ -16,8 +16,10 @@
  */
 package org.apache.kafka.common.metrics.stats;
 
-import org.apache.kafka.common.*;
-import org.apache.kafka.common.metrics.*;
+import org.apache.kafka.common.MetricName;
+import org.apache.kafka.common.metrics.CompoundStat;
+import org.apache.kafka.common.metrics.Measurable;
+import org.apache.kafka.common.metrics.MetricConfig;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +35,7 @@ public class LinearHistogram extends HistogramStat implements CompoundStat {
     @Override
     public List<NamedMeasurable> stats() {
         List<NamedMeasurable> ms = new ArrayList<>();
-        for(Bucket bucket: getBuckets()) {
+        for (Bucket bucket: getBuckets()) {
             ms.add(new NamedMeasurable(bucket.name(), new Measurable() {
                 @Override
                 public double measure(MetricConfig config, long now) {
