@@ -29,7 +29,7 @@ public interface ClientTelemetry extends Closeable {
 
     int DEFAULT_PUSH_INTERVAL_MS = 5 * 60 * 1000;
 
-    long MAX_TERMINAL_PUSH_WAIT_MS = 60 * 1000;
+    long MAX_TERMINAL_PUSH_WAIT_MS = 100;
 
     /**
      * Determines the client's unique client instance ID used for telemetry. This ID is unique to

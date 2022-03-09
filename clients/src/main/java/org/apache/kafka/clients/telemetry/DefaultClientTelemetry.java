@@ -137,16 +137,18 @@ public class DefaultClientTelemetry implements ClientTelemetry {
         }
 
         try {
-            stateLock.readLock().unlock();
+            stateLock.writeLock().lock();
 
             try {
+                log.debug("About to wait {} ms. for terminal telemetry push to be submitted", timeout);
+
                 if (!terminalPushInProgress.await(timeoutMs, TimeUnit.MILLISECONDS))
                     log.debug("Wait for terminal telemetry push to be submitted has elapsed; may not have actually sent request");
             } catch (InterruptedException e) {
                 throw new InterruptException(e);
             }
         } finally {
-            stateLock.readLock().unlock();
+            stateLock.writeLock().unlock();
         }
     }
 
@@ -158,7 +160,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
             stateLock.writeLock().lock();
             TelemetryState newState = TelemetryState.terminated;
 
-            if (state != newState) {
+            if (stateInternal() != newState) {
                 try {
                     // This *shouldn't* throw an exception, but let's wrap it anyway so that we're
                     // sure to close the metrics object.
@@ -174,7 +176,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
         }
     }
 
-    private void setSubscription(TelemetrySubscription newSubscription) {
+    void setSubscription(TelemetrySubscription newSubscription) {
         try {
             subscriptionLock.writeLock().lock();
 
@@ -234,7 +236,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
         TelemetryState state = stateInternal();
 
         try {
-            subscriptionLock.readLock().lock();
+            subscriptionLock.writeLock().lock();
 
             // We can use the instance variable directly here because we're handling the locking...
             if (subscription == null) {
@@ -264,7 +266,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
             return Optional.of(clientInstanceId.toString());
         } finally {
-            subscriptionLock.readLock().unlock();
+            subscriptionLock.writeLock().unlock();
         }
     }
 
@@ -272,13 +274,11 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     public void setState(TelemetryState newState) {
         try {
             stateLock.writeLock().lock();
+            log.trace("Setting telemetry state from {} to {}", this.state, newState);
             this.state = this.state.validateTransition(newState);
-            log.trace("Set telemetry state from {} to {}", this.state, newState);
 
-            if (newState == TelemetryState.terminating_push_in_progress) {
+            if (newState == TelemetryState.terminating_push_in_progress)
                 terminalPushInProgress.signalAll();
-                log.debug("Wait for terminal telemetry push elapsed; may not have actually sent request");
-            }
         } finally {
             stateLock.writeLock().unlock();
         }
