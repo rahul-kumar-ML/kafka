@@ -22,12 +22,11 @@ import java.nio.ByteBuffer
 import java.util.concurrent._
 
 import com.typesafe.scalalogging.Logger
+import com.yammer.metrics.core.Gauge
 import com.yammer.metrics.core.Meter
-import kafka.log.LogConfig
 import kafka.metrics.KafkaMetricsGroup
 import kafka.server.KafkaConfig
 import kafka.utils.{Logging, NotNothing, Pool}
-import org.apache.kafka.common.config.types.Password
 import org.apache.kafka.common.config.ConfigResource
 import org.apache.kafka.common.memory.MemoryPool
 import org.apache.kafka.common.message.IncrementalAlterConfigsRequestData
@@ -116,21 +115,11 @@ object RequestChannel extends Logging {
 
     def loggableRequest: AbstractRequest = {
 
-      def loggableValue(resourceType: ConfigResource.Type, name: String, value: String): String = {
-        val maybeSensitive = resourceType match {
-          case ConfigResource.Type.BROKER => KafkaConfig.maybeSensitive(KafkaConfig.configType(name))
-          case ConfigResource.Type.TOPIC => KafkaConfig.maybeSensitive(LogConfig.configType(name))
-          case ConfigResource.Type.BROKER_LOGGER => false
-          case _ => true
-        }
-        if (maybeSensitive) Password.HIDDEN else value
-      }
-
       bodyAndSize.request match {
         case alterConfigs: AlterConfigsRequest =>
           val loggableConfigs = alterConfigs.configs().asScala.map { case (resource, config) =>
             val loggableEntries = new AlterConfigsRequest.Config(config.entries.asScala.map { entry =>
-                new AlterConfigsRequest.ConfigEntry(entry.name, loggableValue(resource.`type`, entry.name, entry.value))
+                new AlterConfigsRequest.ConfigEntry(entry.name, KafkaConfig.loggableValue(resource.`type`, entry.name, entry.value))
             }.asJavaCollection)
             (resource, loggableEntries)
           }.asJava
@@ -145,7 +134,7 @@ object RequestChannel extends Logging {
             resource.configs.asScala.foreach { config =>
               newResource.configs.add(new AlterableConfig()
                 .setName(config.name)
-                .setValue(loggableValue(ConfigResource.Type.forId(resource.resourceType), config.name, config.value))
+                .setValue(KafkaConfig.loggableValue(ConfigResource.Type.forId(resource.resourceType), config.name, config.value))
                 .setConfigOperation(config.configOperation))
             }
             resources.add(newResource)
@@ -333,10 +322,12 @@ class RequestChannel(val queueSize: Int, val metricNamePrefix : String) extends 
   val requestQueueSizeMetricName = metricNamePrefix.concat(RequestQueueSizeMetric)
   val responseQueueSizeMetricName = metricNamePrefix.concat(ResponseQueueSizeMetric)
 
-  newGauge(requestQueueSizeMetricName, () => requestQueue.size)
+  newGauge(requestQueueSizeMetricName, new Gauge[Int] {
+      def value = requestQueue.size
+  })
 
-  newGauge(responseQueueSizeMetricName, () => {
-    processors.values.asScala.foldLeft(0) {(total, processor) =>
+  newGauge(responseQueueSizeMetricName, new Gauge[Int]{
+    def value = processors.values.asScala.foldLeft(0) {(total, processor) =>
       total + processor.responseQueueSize
     }
   })
@@ -345,8 +336,12 @@ class RequestChannel(val queueSize: Int, val metricNamePrefix : String) extends 
     if (processors.putIfAbsent(processor.id, processor) != null)
       warn(s"Unexpected processor with processorId ${processor.id}")
 
-    newGauge(responseQueueSizeMetricName, () => processor.responseQueueSize,
-      Map(ProcessorMetricTag -> processor.id.toString))
+    newGauge(responseQueueSizeMetricName,
+      new Gauge[Int] {
+        def value = processor.responseQueueSize
+      },
+      Map(ProcessorMetricTag -> processor.id.toString)
+    )
   }
 
   def removeProcessor(processorId: Int): Unit = {
