@@ -44,6 +44,8 @@ import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.LockException;
+import org.apache.kafka.streams.errors.LogAndContinueExceptionHandler;
+import org.apache.kafka.streams.errors.LogAndFailExceptionHandler;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.TaskMigratedException;
@@ -204,6 +206,13 @@ public class StreamTaskTest {
     }
 
     private static StreamsConfig createConfig(final boolean enableEoS, final String enforcedProcessingValue) {
+        return createConfig(enableEoS, enforcedProcessingValue, LogAndFailExceptionHandler.class.getName());
+    }
+
+    private static StreamsConfig createConfig(
+        final boolean enableEoS,
+        final String enforcedProcessingValue,
+        final String deserializationExceptionHandler) {
         final String canonicalPath;
         try {
             canonicalPath = BASE_DIR.getCanonicalPath();
@@ -217,7 +226,8 @@ public class StreamTaskTest {
             mkEntry(StreamsConfig.STATE_DIR_CONFIG, canonicalPath),
             mkEntry(StreamsConfig.DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, MockTimestampExtractor.class.getName()),
             mkEntry(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, enableEoS ? StreamsConfig.EXACTLY_ONCE : StreamsConfig.AT_LEAST_ONCE),
-            mkEntry(StreamsConfig.MAX_TASK_IDLE_MS_CONFIG, enforcedProcessingValue)
+            mkEntry(StreamsConfig.MAX_TASK_IDLE_MS_CONFIG, enforcedProcessingValue),
+            mkEntry(StreamsConfig.DEFAULT_DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG, deserializationExceptionHandler)
         )));
     }
 
@@ -2092,13 +2102,103 @@ public class StreamTaskTest {
     }
 
     @Test
-    public void shouldCLearTaskTimeout() {
+    public void shouldClearTaskTimeout() {
         final Logger log = new LogContext().logger(StreamTaskTest.class);
         task = createStatelessTask(createConfig(false, "0"), StreamsConfig.METRICS_LATEST);
 
         task.maybeInitTaskTimeoutOrThrow(0L, null, log);
         task.clearTaskTimeout(log);
         task.maybeInitTaskTimeoutOrThrow(Duration.ofMinutes(5).plus(Duration.ofMillis(1L)).toMillis(), null, log);
+    }
+
+    @Test
+    public void shouldUpdateOffsetIfAllRecordsAreCorrupted() {
+        task = createStatelessTask(createConfig(
+            false,
+            "0",
+            LogAndContinueExceptionHandler.class.getName()),
+            StreamsConfig.METRICS_LATEST);
+        task.initializeIfNeeded();
+        task.completeRestoration();
+
+        long offset = -1;
+        final List<ConsumerRecord<byte[], byte[]>> records = asList(
+            getCorruptedConsumerRecordWithOffsetAsTimestamp(++offset),
+            getCorruptedConsumerRecordWithOffsetAsTimestamp(++offset));
+        consumer.addRecord(records.get(0));
+        consumer.addRecord(records.get(1));
+        consumer.poll(Duration.ZERO);
+        task.addRecords(partition1, records);
+
+        assertTrue(task.process(offset));
+        assertTrue(task.commitNeeded());
+        assertThat(
+            task.prepareCommit(),
+            equalTo(mkMap(mkEntry(partition1, new OffsetAndMetadata(offset + 1, encodeTimestamp(-1)))))
+        );
+    }
+
+    @Test
+    public void shouldUpdateOffsetIfValidRecordFollowsCorrupted() {
+        task = createStatelessTask(createConfig(
+            false,
+            "0",
+            LogAndContinueExceptionHandler.class.getName()),
+            StreamsConfig.METRICS_LATEST);
+        task.initializeIfNeeded();
+        task.completeRestoration();
+
+        long offset = -1;
+
+        final List<ConsumerRecord<byte[], byte[]>> records = asList(
+            getCorruptedConsumerRecordWithOffsetAsTimestamp(++offset),
+            getConsumerRecord(partition1, ++offset));
+        consumer.addRecord(records.get(0));
+        consumer.addRecord(records.get(1));
+        consumer.poll(Duration.ZERO);
+        task.addRecords(partition1, records);
+
+        assertTrue(task.process(offset));
+        assertTrue(task.commitNeeded());
+        assertThat(
+            task.prepareCommit(),
+            equalTo(mkMap(mkEntry(partition1, new OffsetAndMetadata(offset + 1, encodeTimestamp(offset)))))
+        );
+    }
+
+    @Test
+    public void shouldUpdateOffsetIfCorruptedRecordFollowsValid() {
+        task = createStatelessTask(createConfig(
+            false,
+            "0",
+            LogAndContinueExceptionHandler.class.getName()),
+            StreamsConfig.METRICS_LATEST);
+        task.initializeIfNeeded();
+        task.completeRestoration();
+
+        long offset = -1;
+
+        final List<ConsumerRecord<byte[], byte[]>> records = asList(
+            getConsumerRecord(partition1, ++offset),
+            getCorruptedConsumerRecordWithOffsetAsTimestamp(++offset));
+        consumer.addRecord(records.get(0));
+        consumer.addRecord(records.get(1));
+        consumer.poll(Duration.ZERO);
+        task.addRecords(partition1, records);
+
+        assertTrue(task.process(offset));
+        assertTrue(task.commitNeeded());
+        assertThat(
+            task.prepareCommit(),
+            equalTo(mkMap(mkEntry(partition1, new OffsetAndMetadata(1, encodeTimestamp(0)))))
+        );
+
+        assertTrue(task.process(offset));
+        assertTrue(task.commitNeeded());
+        assertThat(
+            task.prepareCommit(),
+            equalTo(mkMap(mkEntry(partition1, new OffsetAndMetadata(2, encodeTimestamp(0)))))
+        );
     }
 
     private List<MetricName> getTaskMetrics() {
@@ -2346,6 +2446,21 @@ public class StreamTaskTest {
             0,
             new IntegerSerializer().serialize(topic1, key),
             recordValue
+        );
+    }
+
+    private ConsumerRecord<byte[], byte[]> getCorruptedConsumerRecordWithOffsetAsTimestamp(final long offset) {
+        return new ConsumerRecord<>(
+            topic1,
+            1,
+            offset,
+            offset, // use the offset as the timestamp
+            TimestampType.CREATE_TIME,
+            -1,
+            -1,
+            -1,
+            new byte[0],
+            "I am not an integer.".getBytes()
         );
     }
 
