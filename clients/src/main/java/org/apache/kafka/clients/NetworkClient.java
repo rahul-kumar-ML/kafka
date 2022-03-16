@@ -1348,7 +1348,7 @@ public class NetworkClient implements KafkaClient {
         }
 
         public void handleSuccessfulPushTelemetryResponse(PushTelemetryResponse response) {
-            clientTelemetry.pushTelemetrySucceeded(response.data());
+            clientTelemetry.pushTelemetryReceived(response.data());
         }
 
     }

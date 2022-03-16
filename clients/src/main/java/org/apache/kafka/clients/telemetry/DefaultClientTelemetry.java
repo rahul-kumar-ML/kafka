@@ -36,6 +36,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.errors.InterruptException;
@@ -346,12 +348,6 @@ public class DefaultClientTelemetry implements ClientTelemetry {
         // TODO: TELEMETRY_TODO: this is temporary until we get real data back from broker...
         requestedMetrics.add("");
 
-        if (data.errorCode() != Errors.NONE.code()) {
-            // TODO: set state
-            handleGetTelemetrySubscriptionResponseErrors(data);
-            return;
-        }
-
         MetricSelector metricSelector = validateMetricNames(requestedMetrics);
         List<CompressionType> acceptedCompressionTypes = validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
         Uuid clientInstanceId = validateClientInstanceId(data.clientInstanceId());
@@ -392,8 +388,12 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     }
 
     @Override
-    public void pushTelemetrySucceeded(PushTelemetryResponseData data) {
+    public void pushTelemetryReceived(PushTelemetryResponseData data) {
         log.debug("Successfully pushed telemetry; response: {}", data);
+        if (data.errorCode() != Errors.NONE.code()) {
+            handlePushTelemetryResponseDataErrors(data);
+            return;
+        }
 
         TelemetryState state = stateInternal();
 
@@ -405,32 +405,32 @@ public class DefaultClientTelemetry implements ClientTelemetry {
             throw new IllegalTelemetryStateException(String.format("Could not transition state after successful push telemetry from state %s", state));
     }
 
-    private void handleGetTelemetrySubscriptionResponseErrors(final GetTelemetrySubscriptionsResponseData data) {
-        final MetricSelector metricSelector = validateMetricNames(data.requestedMetrics());
-        final List<CompressionType> acceptedCompressionTypes = validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
-        final Uuid clientInstanceId = validateClientInstanceId(data.clientInstanceId());
-
-        TelemetrySubscription newTelemetrySubscription = new TelemetrySubscription(time.milliseconds(),
-                data.throttleTimeMs(),
-                clientInstanceId,
-                data.subscriptionId(),
-                acceptedCompressionTypes,
-                data.pushIntervalMs(),
-                data.deltaTemporality(),
-                metricSelector);
+    /**
+     * Examine the response data and handle different error code accordingly.
+     *  - Authorization Failed: Retry 30min later
+     *  - Invalid Record: Retry 5min later
+     *  - UnknownSubscription or Unsupported Compression: Retry
+     *  After a new subscription is created, the current state is transitioned to push_needed to wait for another push.
+     *
+     * @param data pushTelemetryResponseData
+     * @throws IllegalTelemetryStateException when subscription is mull
+     */
+    private void handlePushTelemetryResponseDataErrors(final PushTelemetryResponseData data) {
+        TelemetrySubscription currentSubscription = subscription().orElseThrow(
+        () -> new IllegalTelemetryStateException(String.format("Could not transition state after successful push telemetry from state %s", state)));
 
         // We might want to wait and retry or retry after some failures are received
         if (isAuthorizationFailedError(data.errorCode())) {
             final long retryMs = 30 * 60 * 1000;
             log.warn("Error code: {}. Reason: Client is permitted to send metrics.  Retry automatically in {}ms.", data.errorCode(), retryMs);
-            setSubscription(newTelemetrySubscription.alterPushIntervalMs(retryMs));
+            setSubscription(currentSubscription.alterPushIntervalMs(retryMs));
         } else if (data.errorCode() == Errors.INVALID_RECORD.code()) {
             final long retryMs = 5 * 60 * 1000;
             log.warn("Error code: {}.  Reason: Broker failed to decode or validate the client’s encoded metrics.  Retry automatically in {}ms", data.errorCode(), retryMs);
-            setSubscription(newTelemetrySubscription.alterPushIntervalMs(retryMs));
+            setSubscription(currentSubscription.alterPushIntervalMs(retryMs));
         } else if (data.errorCode() == -1 ||
                 data.errorCode() == Errors.UNSUPPORTED_COMPRESSION_TYPE.code()) {
-            setSubscription(newTelemetrySubscription.alterPushIntervalMs(0));
+            setSubscription(currentSubscription.alterPushIntervalMs(0));
         }
 
         // rollback to push_needed to wait for another push

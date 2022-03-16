@@ -71,7 +71,7 @@ public interface ClientTelemetry extends Closeable {
 
     void telemetrySubscriptionReceived(GetTelemetrySubscriptionsResponseData data);
 
-    void pushTelemetrySucceeded(PushTelemetryResponseData data);
+    void pushTelemetryReceived(PushTelemetryResponseData data);
 
     Optional<Long> timeToNextUpdate(long requestTimeoutMs);
 
