@@ -45,6 +45,7 @@ import org.apache.kafka.common.metrics.KafkaMetricsContext;
 import org.apache.kafka.common.metrics.MetricConfig;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.MetricsContext;
+import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.requests.AbstractRequest;
 import org.apache.kafka.common.utils.Time;
@@ -339,11 +340,17 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     }
 
     @Override
-    public void telemetrySubscriptionSucceeded(GetTelemetrySubscriptionsResponseData data) {
+    public void telemetrySubscriptionReceived(GetTelemetrySubscriptionsResponseData data) {
         List<String> requestedMetrics = data.requestedMetrics();
 
         // TODO: TELEMETRY_TODO: this is temporary until we get real data back from broker...
         requestedMetrics.add("");
+
+        if (data.errorCode() != Errors.NONE.code()) {
+            // TODO: set state
+            handleGetTelemetrySubscriptionResponseErrors(data);
+            return;
+        }
 
         MetricSelector metricSelector = validateMetricNames(requestedMetrics);
         List<CompressionType> acceptedCompressionTypes = validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
@@ -396,6 +403,46 @@ public class DefaultClientTelemetry implements ClientTelemetry {
             setState(TelemetryState.terminated);
         else
             throw new IllegalTelemetryStateException(String.format("Could not transition state after successful push telemetry from state %s", state));
+    }
+
+    private void handleGetTelemetrySubscriptionResponseErrors(final GetTelemetrySubscriptionsResponseData data) {
+        final MetricSelector metricSelector = validateMetricNames(data.requestedMetrics());
+        final List<CompressionType> acceptedCompressionTypes = validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
+        final Uuid clientInstanceId = validateClientInstanceId(data.clientInstanceId());
+
+        TelemetrySubscription newTelemetrySubscription = new TelemetrySubscription(time.milliseconds(),
+                data.throttleTimeMs(),
+                clientInstanceId,
+                data.subscriptionId(),
+                acceptedCompressionTypes,
+                data.pushIntervalMs(),
+                data.deltaTemporality(),
+                metricSelector);
+
+        // We might want to wait and retry or retry after some failures are received
+        if (isAuthorizationFailedError(data.errorCode())) {
+            final long retryMs = 30 * 60 * 1000;
+            log.warn("Error code: {}. Reason: Client is permitted to send metrics.  Retry automatically in {}ms.", data.errorCode(), retryMs);
+            setSubscription(newTelemetrySubscription.alterPushIntervalMs(retryMs));
+        } else if (data.errorCode() == Errors.INVALID_RECORD.code()) {
+            final long retryMs = 5 * 60 * 1000;
+            log.warn("Error code: {}.  Reason: Broker failed to decode or validate the client’s encoded metrics.  Retry automatically in {}ms", data.errorCode(), retryMs);
+            setSubscription(newTelemetrySubscription.alterPushIntervalMs(retryMs));
+        } else if (data.errorCode() == -1 ||
+                data.errorCode() == Errors.UNSUPPORTED_COMPRESSION_TYPE.code()) {
+            setSubscription(newTelemetrySubscription.alterPushIntervalMs(0));
+        }
+
+        // rollback to push_needed to wait for another push
+        setState(TelemetryState.push_needed);
+    }
+
+    private static boolean isAuthorizationFailedError(short errorCode) {
+        return errorCode == Errors.CLUSTER_AUTHORIZATION_FAILED.code() ||
+                errorCode == Errors.TRANSACTIONAL_ID_AUTHORIZATION_FAILED.code() ||
+                errorCode == Errors.GROUP_AUTHORIZATION_FAILED.code() ||
+                errorCode == Errors.TOPIC_AUTHORIZATION_FAILED.code() ||
+                errorCode == Errors.DELEGATION_TOKEN_AUTHORIZATION_FAILED.code();
     }
 
     @Override

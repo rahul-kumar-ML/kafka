@@ -100,4 +100,33 @@ public class TelemetrySubscription {
             .add("metricSelector=" + metricSelector)
             .toString();
     }
+
+    /**
+     * Create a new TelemetrySubscription object with the given {@code pushIntervalMs} parameter.
+     * @param pushIntervalMs time interval in millisecond of the next push
+     * @return a new TelemetrySubscription
+     */
+    public TelemetrySubscription alterPushIntervalMs(long pushIntervalMs) {
+        return new TelemetrySubscription(
+                this.fetchMs,
+                this.throttleTimeMs,
+                this.clientInstanceId(),
+                this.subscriptionId(),
+                this.acceptedCompressionTypes(),
+                pushIntervalMs,
+                this.deltaTemporality(),
+                this.metricSelector());
+    }
+
+    public TelemetrySubscription clone() {
+        return new TelemetrySubscription(
+                this.fetchMs,
+                this.throttleTimeMs,
+                this.clientInstanceId(),
+                this.subscriptionId(),
+                this.acceptedCompressionTypes(),
+                this.pushIntervalMs,
+                this.deltaTemporality(),
+                this.metricSelector());
+    }
 }
