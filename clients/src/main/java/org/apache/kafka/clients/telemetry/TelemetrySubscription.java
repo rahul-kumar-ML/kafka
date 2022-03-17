@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.StringJoiner;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.record.CompressionType;
-import org.apache.kafka.common.utils.*;
+import org.apache.kafka.common.utils.Time;
 
 /**
  * Simple, in-memory representation of the telemetry subscription that is retrieved from the cluster
