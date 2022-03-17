@@ -17,7 +17,13 @@
 package org.apache.kafka.clients.telemetry;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Optional;
+
+import org.apache.kafka.common.Uuid;
+import org.apache.kafka.common.message.PushTelemetryResponseData;
+import org.apache.kafka.common.protocol.Errors;
+import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.junit.jupiter.api.Test;
@@ -100,6 +106,27 @@ public class DefaultClientTelemetryTest extends BaseClientTelemetryTest {
             assertNotNull(clientInstanceId);
             assertEquals(shouldBePresent, clientInstanceId.isPresent());
         }
+    }
+
+    @Test
+    public void testTelemetrySubscriptionReceivedStateTransition() {
+        DefaultClientTelemetry clientTelemetry = newClientTelemetry();
+        clientTelemetry.setSubscription(new TelemetrySubscription(
+                0,
+                0,
+                Uuid.randomUuid(),
+                42,
+                Collections.singletonList(CompressionType.NONE),
+                10000,
+                true,
+                MetricSelector.ALL));
+        clientTelemetry.setState(TelemetryState.terminating_push_needed);
+        PushTelemetryResponseData data = new PushTelemetryResponseData();
+        data.setErrorCode(Errors.CLUSTER_AUTHORIZATION_FAILED.code());
+        clientTelemetry.pushTelemetryReceived(data);
+        assertEquals(TelemetryState.subscription_in_progress, clientTelemetry.state().orElseThrow(() -> new RuntimeException("unable to make state transition")));
+
+        clientTelemetry.close();
     }
 
 }
