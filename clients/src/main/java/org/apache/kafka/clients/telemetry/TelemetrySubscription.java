@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.StringJoiner;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.record.CompressionType;
+import org.apache.kafka.common.utils.*;
 
 /**
  * Simple, in-memory representation of the telemetry subscription that is retrieved from the cluster
@@ -106,26 +107,14 @@ public class TelemetrySubscription {
      * @param pushIntervalMs time interval in millisecond of the next push
      * @return a new TelemetrySubscription
      */
-    public TelemetrySubscription alterPushIntervalMs(long pushIntervalMs) {
+    public TelemetrySubscription alterPushIntervalMs(long pushIntervalMs, Time time) {
         return new TelemetrySubscription(
-                this.fetchMs,
+                time.milliseconds(), // update fetch ms to get the correct next push time
                 this.throttleTimeMs,
                 this.clientInstanceId(),
                 this.subscriptionId(),
                 this.acceptedCompressionTypes(),
                 pushIntervalMs,
-                this.deltaTemporality(),
-                this.metricSelector());
-    }
-
-    public TelemetrySubscription clone() {
-        return new TelemetrySubscription(
-                this.fetchMs,
-                this.throttleTimeMs,
-                this.clientInstanceId(),
-                this.subscriptionId(),
-                this.acceptedCompressionTypes(),
-                this.pushIntervalMs,
                 this.deltaTemporality(),
                 this.metricSelector());
     }

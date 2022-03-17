@@ -388,10 +388,10 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
     @Override
     public void pushTelemetryReceived(PushTelemetryResponseData data) {
-        log.debug("Successfully pushed telemetry; response: {}", data);
         if (data.errorCode() != Errors.NONE.code()) {
             handlePushTelemetryResponseDataErrors(data);
-            return;
+        } else {
+            log.debug("Successfully pushed telemetry; response: {}", data);
         }
 
         TelemetryState state = stateInternal();
@@ -416,24 +416,22 @@ public class DefaultClientTelemetry implements ClientTelemetry {
      */
     private void handlePushTelemetryResponseDataErrors(final PushTelemetryResponseData data) {
         TelemetrySubscription currentSubscription = subscription().orElseThrow(
-        () -> new IllegalTelemetryStateException(String.format("Could not transition state after successful push telemetry from state %s", state)));
+        () -> new IllegalTelemetryStateException(String.format("Subscription cannot be null.  Aborting.")));
 
         // We might want to wait and retry or retry after some failures are received
         if (isAuthorizationFailedError(data.errorCode())) {
             final long retryMs = 30 * 60 * 1000;
             log.warn("Error code: {}. Reason: Client is permitted to send metrics.  Retry automatically in {}ms.", data.errorCode(), retryMs);
-            setSubscription(currentSubscription.alterPushIntervalMs(retryMs));
+            setSubscription(currentSubscription.alterPushIntervalMs(retryMs, time));
         } else if (data.errorCode() == Errors.INVALID_RECORD.code()) {
             final long retryMs = 5 * 60 * 1000;
             log.warn("Error code: {}.  Reason: Broker failed to decode or validate the client’s encoded metrics.  Retry automatically in {}ms", data.errorCode(), retryMs);
-            setSubscription(currentSubscription.alterPushIntervalMs(retryMs));
-        } else if (data.errorCode() == -1 ||
+            setSubscription(currentSubscription.alterPushIntervalMs(retryMs, time));
+        } else if (data.errorCode() == -1 || // TODO: UnknownSubscriptionId isn't in the Errors package.  Leave it as -1 for now
                 data.errorCode() == Errors.UNSUPPORTED_COMPRESSION_TYPE.code()) {
-            setSubscription(currentSubscription.alterPushIntervalMs(0));
+            log.warn("Error code: {}.  Reason: {}.  Retrying automatically.", data.errorCode(), Errors.forCode(data.errorCode()).message());
+            setSubscription(currentSubscription.alterPushIntervalMs(0, time));
         }
-
-        // rollback to push_needed to wait for another push
-        setState(TelemetryState.push_needed);
     }
 
     private static boolean isAuthorizationFailedError(short errorCode) {
