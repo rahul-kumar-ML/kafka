@@ -37,7 +37,6 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.errors.InterruptException;
