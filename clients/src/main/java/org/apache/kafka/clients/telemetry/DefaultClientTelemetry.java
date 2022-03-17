@@ -418,14 +418,17 @@ public class DefaultClientTelemetry implements ClientTelemetry {
         TelemetrySubscription currentSubscription = subscription().orElseThrow(
         () -> new IllegalTelemetryStateException(String.format("Subscription cannot be null.  Aborting.")));
 
+        final long retryMs;
         // We might want to wait and retry or retry after some failures are received
         if (isAuthorizationFailedError(data.errorCode())) {
+            retryMs = 30 * 60 * 1000;
             log.warn("Error code: {}. Reason: Client is permitted to send metrics.  Retry automatically in {}ms.", data.errorCode(), retryMs);
-            setSubscription(currentSubscription.alterPushIntervalMs(30 * 60 * 1000, time));
+            setSubscription(currentSubscription.alterPushIntervalMs(retryMs, time));
         } else if (data.errorCode() == Errors.INVALID_RECORD.code()) {
+            retryMs = 5 * 60 * 1000;
             log.warn("Error code: {}.  Reason: Broker failed to decode or validate the client’s encoded metrics.  Retry automatically in {}ms", data.errorCode(), retryMs);
-            setSubscription(currentSubscription.alterPushIntervalMs( 5 * 60 * 1000, time));
-        } else if (data.errorCode() == -1 || // TODO: UnknownSubscriptionId isn't in the Errors package.  Leave it as -1 for now
+            setSubscription(currentSubscription.alterPushIntervalMs(retryMs, time));
+        } else if (data.errorCode() == -1 ||
                 data.errorCode() == Errors.UNSUPPORTED_COMPRESSION_TYPE.code()) {
             log.warn("Error code: {}.  Reason: {}.  Retrying automatically.", data.errorCode(), Errors.forCode(data.errorCode()).message());
             setSubscription(currentSubscription.alterPushIntervalMs(0, time));
