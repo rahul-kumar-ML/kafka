@@ -53,6 +53,30 @@ import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The default implementation of the client telemetry agent.  The full life-cycle of the metric collection process is
+ * defined by a state machine in the {@link TelemetryState}.  Each state is assciate with a different set of operations.
+ * For example, the agent will attempt to fetch the subscription from the broker when in the subscription_needed state.
+ * If the push operation failed, the state machine might attempt to refetch the subscription information, and set the
+ * state back to subscription_needed.
+ *
+ * In an unlikely scenario, if a bad state transition is detected, an {@link IllegalTelemetryStateException}  will be
+ * thrown.
+ *
+ * The state transition follows the following steps in order:
+ * <ol>
+ *     <li>subscription_needed
+ *     <li>subscription_in_progress
+ *     <li>push_needed
+ *     <li>push_in_progress
+ *     <li>terminating_push_needed
+ *     <li>terminating_push_in_progress
+ *     <li>terminated
+ * </ol>
+ * For more detail in state transition, see {@link TelemetryState}.VALID_NEXT_STATES, or
+ * {@code TelemetryState.validateTransition}.
+ *
+ */
 public class DefaultClientTelemetry implements ClientTelemetry {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultClientTelemetry.class);
@@ -388,6 +412,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
     @Override
     public void pushTelemetryReceived(PushTelemetryResponseData data) {
+        // TODO: validate the state as push in prog or teminating pushn prog
         if (data.errorCode() != Errors.NONE.code()) {
             handlePushTelemetryResponseDataErrors(data);
         } else {
