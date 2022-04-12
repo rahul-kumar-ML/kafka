@@ -22,6 +22,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import org.apache.kafka.clients.telemetry.exporter.Exporter;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.metrics.CompoundStat;
@@ -48,10 +50,13 @@ public abstract class MetricRecorder implements ClientMetricRecorder {
 
     protected final List<MetricNameTemplate> allTemplates;
 
-    protected MetricRecorder(Metrics metrics) {
+    protected final Exporter exporter;
+
+    protected MetricRecorder(Metrics metrics, Exporter exporter) {
         this.metrics = metrics;
         this.tags = this.metrics.config().tags().keySet();
         this.allTemplates = new ArrayList<>();
+        this.exporter = exporter;
     }
 
     protected Sensor gaugeUpdateSensor(MetricName mn) {

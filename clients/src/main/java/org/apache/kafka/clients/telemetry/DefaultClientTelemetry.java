@@ -25,6 +25,8 @@ import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.validateMe
 import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.validatePushIntervalMs;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -37,15 +39,21 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.apache.kafka.clients.telemetry.collector.KafkaMetricsCollector;
+import org.apache.kafka.clients.telemetry.collector.MetricsCollector;
+import org.apache.kafka.clients.telemetry.emitter.TelemetryEmitter;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.message.GetTelemetrySubscriptionsResponseData;
 import org.apache.kafka.common.message.PushTelemetryResponseData;
+import org.apache.kafka.common.metrics.JmxReporter;
+import org.apache.kafka.common.metrics.KafkaMetric;
 import org.apache.kafka.common.metrics.KafkaMetricsContext;
 import org.apache.kafka.common.metrics.MetricConfig;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.MetricsContext;
+import org.apache.kafka.common.metrics.MetricsReporter;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.requests.AbstractRequest;
@@ -119,6 +127,11 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
     private final DefaultProducerTopicMetricRecorder producerTopicMetricRecorder;
 
+    private final Context telemetryContext;
+    private volatile KafkaMetricsCollector kafkaMetricsCollector;
+    private volatile TelemetryEmitter emitter;
+    private Metrics selfMetrics;
+
     public DefaultClientTelemetry(Time time, String clientId) {
         if (time == null)
             throw new IllegalArgumentException("time for ClientTelemetryImpl cannot be null");
@@ -137,16 +150,50 @@ public class DefaultClientTelemetry implements ClientTelemetry {
             .tags(metricsTags);
         MetricsContext metricsContext = new KafkaMetricsContext(CONTEXT);
 
-        this.metrics = new Metrics(metricConfig,
-            Collections.singletonList(telemetryMetricsReporter),
-            time,
-            metricsContext);
+        this.metrics = new Metrics(
+                new MetricConfig(),
+                Arrays.asList(
+                        // expose self-metrics via JMX
+                        new JmxReporter(),
+                        // shim to expose self-metrics with telemetry-reporter itself
+                        new MetricsReporter() {
+                            @Override
+                            public void init(List<KafkaMetric> metrics) {
+                                kafkaMetricsCollector.init(metrics);
+                            }
+
+                            @Override
+                            public void metricChange(KafkaMetric metric) {
+                                kafkaMetricsCollector.metricChange(metric);
+                            }
+
+                            @Override
+                            public void metricRemoval(KafkaMetric metric) {
+                                kafkaMetricsCollector.metricRemoval(metric);
+                            }
+
+                            @Override
+                            public void close() {
+                                // selfMetricsCollector does not need to be closed
+                            }
+
+                            @Override
+                            public void configure(Map<String, ?> configs) {
+                                // selfMetricsCollector is already configured based on the telemetry reporter config
+                            }
+                        }),
+                Time.SYSTEM,
+                new KafkaMetricsContext("some_name_space"));;
+
+        this.telemetryContext = new Context(null, null, false);
 
         this.clientInstanceMetricRecorder = new DefaultClientInstanceMetricRecorder(this.metrics);
-        this.consumerMetricRecorder = new DefaultConsumerMetricRecorder(this.metrics);
+        this.consumerMetricRecorder = new DefaultConsumerMetricRecorder(telemetryContext, this.metrics);
         this.hostProcessMetricRecorder = new DefaultHostProcessMetricRecorder(this.metrics);
         this.producerMetricRecorder = new DefaultProducerMetricRecorder(this.metrics);
         this.producerTopicMetricRecorder = new DefaultProducerTopicMetricRecorder(this.metrics);
+
+        this.kafkaMetricsCollector =  new KafkaMetricsCollector(null); // initialization
     }
 
     // For testing...
@@ -539,7 +586,8 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
     // Package visible for testing access.
     Collection<TelemetryMetric> getTelemetryMetrics(TelemetrySubscription subscription) {
-        return currentTelemetryMetrics(telemetryMetricsReporter.current(),
+        kafkaMetricsCollector.collect(emitter);
+        return currentTelemetryMetrics(exporter.,
             deltaValueStore,
             subscription.deltaTemporality(),
             subscription.metricSelector());
@@ -569,4 +617,9 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     public DefaultProducerTopicMetricRecorder producerTopicMetricRecorder() {
         return producerTopicMetricRecorder;
     }
+
+    private void collectAndExport() {
+        collectors.forEach(this::collectAndExport);
+    }
+
 }

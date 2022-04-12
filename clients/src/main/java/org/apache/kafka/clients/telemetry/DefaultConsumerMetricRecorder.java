@@ -16,9 +16,17 @@
  */
 package org.apache.kafka.clients.telemetry;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+
+import org.apache.kafka.clients.telemetry.collector.KafkaMetricsCollector;
+import org.apache.kafka.clients.telemetry.collector.MetricsCollector;
+import org.apache.kafka.clients.telemetry.emitter.Emitter;
+import org.apache.kafka.clients.telemetry.emitter.TelemetryEmitter;
+import org.apache.kafka.clients.telemetry.exporter.Exporter;
+import org.apache.kafka.clients.telemetry.exporter.TelemetryExporter;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.MetricNameTemplate;
 import org.apache.kafka.common.metrics.Metrics;
@@ -54,8 +62,12 @@ public class DefaultConsumerMetricRecorder extends MetricRecorder implements Con
 
     private final MetricName recordApplicationBytes;
 
-    public DefaultConsumerMetricRecorder(Metrics metrics) {
-        super(metrics);
+    private final Emitter emitter;
+    private final Context context;
+    private final KafkaMetricsCollector collector;
+
+    public DefaultConsumerMetricRecorder(Context ctx, Metrics metrics) {
+        super(metrics, new TelemetryExporter());
 
         Set<String> errorTags = appendTags(tags, ERROR_LABEL);
 
@@ -71,6 +83,14 @@ public class DefaultConsumerMetricRecorder extends MetricRecorder implements Con
         this.recordQueueBytes = createMetricName(RECORD_QUEUE_BYTES_NAME, GROUP_NAME, RECORD_QUEUE_BYTES_DESCRIPTION);
         this.recordApplicationCount = createMetricName(RECORD_APPLICATION_COUNT_NAME, GROUP_NAME, RECORD_APPLICATION_COUNT_DESCRIPTION);
         this.recordApplicationBytes = createMetricName(RECORD_APPLICATION_BYTES_NAME, GROUP_NAME, RECORD_APPLICATION_BYTES_DESCRIPTION);
+
+        this.context = ctx;
+
+        this.emitter = createEmitter();
+        this.collector = new KafkaMetricsCollector(null); // some metric collector
+
+        collector.init(new ArrayList<>(metrics.metrics().values()));
+        collector.start();
     }
 
     @Override
@@ -132,5 +152,19 @@ public class DefaultConsumerMetricRecorder extends MetricRecorder implements Con
     @Override
     public void addRecordApplicationBytes(long amount) {
         sumSensor(recordApplicationBytes).record(amount);
+    }
+
+    private synchronized Emitter createEmitter() {
+        emitter = new TelemetryEmitter(context, exporters::values, unionPredicate, selfMetrics);
+        return emitter;
+    }
+
+    private void collectAndExport(MetricsCollector collector) {
+        try {
+            collector.collect(emitter);
+            // do something to export the metrics
+        } catch (Throwable t) {
+            // do something
+        }
     }
 }

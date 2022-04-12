@@ -16,8 +16,14 @@
  */
 package org.apache.kafka.common.metrics.internals;
 
+import com.google.protobuf.Timestamp;
 import org.apache.kafka.common.metrics.Metrics;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -62,5 +68,37 @@ public class MetricsUtils {
         for (int i = 0; i < keyValue.length; i += 2)
             tags.put(keyValue[i], keyValue[i + 1]);
         return tags;
+    }
+
+
+    public static Timestamp now(Clock clock) {
+        return toTimestamp(Instant.now(clock));
+    }
+
+    public static Timestamp now() {
+        return now(Clock.systemUTC());
+    }
+
+    public static Timestamp toTimestamp(Instant instant) {
+        return Timestamp.newBuilder()
+                .setSeconds(instant.getEpochSecond())
+                .setNanos(instant.getNano())
+                .build();
+    }
+
+    public static Instant toInstant(Timestamp timestamp) {
+        return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
+    }
+
+    public static ZonedDateTime nowInUTC(Clock clock) {
+        return Instant.now(clock).atZone(ZoneOffset.UTC);
+    }
+
+    public static OffsetDateTime nowInUTC() {
+        return OffsetDateTime.now(Clock.systemUTC());
+    }
+
+    public static long toTimeUnixNanos(Instant t) {
+        return TimeUnit.SECONDS.toNanos(t.getEpochSecond()) + t.getNano();
     }
 }
