@@ -707,7 +707,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.defaultApiTimeoutMs = config.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG);
             this.time = Time.SYSTEM;
             this.metrics = buildMetrics(config, time, clientId);
-            this.clientTelemetry = ClientTelemetryUtils.create(config, time, clientId);
+            this.clientTelemetry = ClientTelemetryUtils.create(config, time, clientId, ClientTelemetryUtils.createConsumerLabels(groupMetadata()));
             this.consumerMetricRecorder = clientTelemetry.consumerMetricRecorder();
             this.retryBackoffMs = config.getLong(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG);
 
@@ -868,7 +868,8 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         this.interceptors = Objects.requireNonNull(interceptors);
         this.time = time;
         this.client = client;
-        this.clientTelemetry = create(enableMetricsPush, time, clientId);
+        //TODO: add test for this
+        this.clientTelemetry = create(enableMetricsPush, time, clientId, ClientTelemetryUtils.createConsumerLabels(groupMetadata()));
         this.consumerMetricRecorder = clientTelemetry.consumerMetricRecorder();
         this.metrics = metrics;
         this.subscriptions = subscriptions;

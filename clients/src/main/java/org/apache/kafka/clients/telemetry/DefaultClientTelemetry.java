@@ -27,6 +27,7 @@ import static org.apache.kafka.clients.telemetry.ClientTelemetryUtils.validatePu
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -119,7 +120,7 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
     private final DefaultProducerTopicMetricRecorder producerTopicMetricRecorder;
 
-    public DefaultClientTelemetry(Time time, String clientId) {
+    public DefaultClientTelemetry(Time time, String clientId, Map<String, String> resources) {
         if (time == null)
             throw new IllegalArgumentException("time for ClientTelemetryImpl cannot be null");
 
@@ -134,19 +135,23 @@ public class DefaultClientTelemetry implements ClientTelemetry {
 
         Map<String, String> metricsTags = Collections.singletonMap(CLIENT_ID_METRIC_TAG, clientId);
         MetricConfig metricConfig = new MetricConfig()
-            .tags(metricsTags);
-        MetricsContext metricsContext = new KafkaMetricsContext(CONTEXT);
+                .tags(metricsTags);
+        MetricsContext metricsContext = new KafkaMetricsContext(CONTEXT, resources);
 
         this.metrics = new Metrics(metricConfig,
-            Collections.singletonList(telemetryMetricsReporter),
-            time,
-            metricsContext);
+                Collections.singletonList(telemetryMetricsReporter),
+                time,
+                metricsContext);
 
         this.clientInstanceMetricRecorder = new DefaultClientInstanceMetricRecorder(this.metrics);
         this.consumerMetricRecorder = new DefaultConsumerMetricRecorder(this.metrics);
         this.hostProcessMetricRecorder = new DefaultHostProcessMetricRecorder(this.metrics);
         this.producerMetricRecorder = new DefaultProducerMetricRecorder(this.metrics);
         this.producerTopicMetricRecorder = new DefaultProducerTopicMetricRecorder(this.metrics);
+    }
+
+    public DefaultClientTelemetry(Time time, String clientId) {
+        this(time, clientId, new HashMap<>());
     }
 
     // For testing...

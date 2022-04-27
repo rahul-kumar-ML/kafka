@@ -24,10 +24,14 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.telemetry.ClientInstanceMetricRecorder.ConnectionErrorReason;
 import org.apache.kafka.clients.telemetry.MetricSelector.FilteredMetricSelector;
 import org.apache.kafka.common.KafkaException;
@@ -233,16 +237,28 @@ public class ClientTelemetryUtils {
     }
 
     public static ClientTelemetry create(AbstractConfig config, Time time, String clientId) {
+        return create(config, time, clientId, new ResourceLabels());
+    }
+
+    public static ClientTelemetry create(AbstractConfig config, Time time, String clientId, final Map<String, String> resourceLabels) {
+        return create(config, time, clientId, new ResourceLabels(resourceLabels));
+    }
+
+    public static ClientTelemetry create(AbstractConfig config, Time time, String clientId, final ResourceLabels labels) {
         if (config == null)
             throw new IllegalArgumentException("config for ClientTelemetry cannot be null");
 
         boolean enableMetricsPush = config.getBoolean(CommonClientConfigs.ENABLE_METRICS_PUSH_CONFIG);
-        return create(enableMetricsPush, time, clientId);
+
+        if(!config.getString(CommonClientConfigs.CLIENT_RACK_CONFIG).isEmpty())
+            labels.maybePut(ResourceLabelConfigs.RACK_ID, config.getString(CommonClientConfigs.CLIENT_RACK_CONFIG));
+
+        return create(enableMetricsPush, time, clientId, labels);
     }
 
-    public static ClientTelemetry create(boolean enableMetricsPush, Time time, String clientId) {
+    public static ClientTelemetry create(boolean enableMetricsPush, Time time, String clientId, final ResourceLabels labels) {
         if (enableMetricsPush)
-            return new DefaultClientTelemetry(time, clientId);
+            return new DefaultClientTelemetry(time, clientId, labels.getResourceLabels());
         else
             return new NoopClientTelemetry();
     }
@@ -385,4 +401,47 @@ public class ClientTelemetryUtils {
             metricsData);
     }
 
+    public static ResourceLabels createConsumerLabels(final ConsumerGroupMetadata groupMetadata) {
+        if(groupMetadata == null) {
+            return new ResourceLabels();
+        }
+
+        ResourceLabels resourceLabels = new ResourceLabels();
+        resourceLabels.maybePut(ResourceLabelConfigs.CONSUMER_GROUP_MEMBERSHIP_ID, groupMetadata.memberId());
+        resourceLabels.maybePut(ResourceLabelConfigs.CONSUMER_GROUP_ID, groupMetadata.groupId());
+        resourceLabels.maybePut(ResourceLabelConfigs.CONSUMER_GROUP_INSTASNCE_ID, groupMetadata.groupInstanceId().get());
+
+        return resourceLabels;
+    }
+
+    static class ResourceLabels {
+        private Map<String, String> resourceLabels;
+
+        ResourceLabels() {
+            this.resourceLabels = new HashMap<>();
+        }
+
+        ResourceLabels(final Map<String, String> labels) {
+            this.resourceLabels = new HashMap<>();
+            for(Map.Entry<String, String> entry : labels.entrySet()) {
+                // basically filter out null keys and values
+                maybePut(entry.getKey(), entry.getValue());
+            }
+        }
+
+        public boolean maybePut(String key, String val) {
+            if(key == null || key.isEmpty()) {
+                return false;
+            }
+
+            if(val == null || val.isEmpty()) {
+               return false;
+            }
+
+            resourceLabels.put(key, val);
+            return true;
+        }
+
+        public Map<String, String> getResourceLabels() { return this.resourceLabels; }
+    }
 }
