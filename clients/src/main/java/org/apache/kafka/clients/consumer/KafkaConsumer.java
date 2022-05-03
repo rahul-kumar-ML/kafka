@@ -707,7 +707,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.defaultApiTimeoutMs = config.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG);
             this.time = Time.SYSTEM;
             this.metrics = buildMetrics(config, time, clientId);
-            this.clientTelemetry = ClientTelemetryUtils.create(config, time, clientId, ClientTelemetryUtils.createConsumerLabels(groupMetadata()));
+            this.clientTelemetry = ClientTelemetryUtils.create(config, time, clientId);
             this.consumerMetricRecorder = clientTelemetry.consumerMetricRecorder();
             this.retryBackoffMs = config.getLong(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG);
 
@@ -869,7 +869,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         this.time = time;
         this.client = client;
         //TODO: add test for this
-        this.clientTelemetry = create(enableMetricsPush, time, clientId, ClientTelemetryUtils.createConsumerLabels(groupMetadata()));
+        this.clientTelemetry = create(enableMetricsPush, time, clientId);
         this.consumerMetricRecorder = clientTelemetry.consumerMetricRecorder();
         this.metrics = metrics;
         this.subscriptions = subscriptions;
@@ -1260,6 +1260,9 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     }
                 }
 
+                // injecting resource lables before a pushTelemetryRequest is being made to the server
+                injectConsumerResourceLabels();
+
                 final Fetch<K, V> fetch = pollForFetches(timer);
                 if (!fetch.isEmpty()) {
                     // before returning the fetched records, we can send off the next round of fetches
@@ -1286,6 +1289,11 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             release();
             this.kafkaConsumerMetrics.recordPollEnd(timer.currentTimeMs());
         }
+    }
+
+    // KIP-714: injecting consumer group resource labels
+    private void injectConsumerResourceLabels() {
+        clientTelemetry.contextChange(() -> ClientTelemetryUtils.createConsumerLabels(groupMetadata()).getResourceLabels());
     }
 
     boolean updateAssignmentMetadataIfNeeded(final Timer timer, final boolean waitForJoinGroup) {

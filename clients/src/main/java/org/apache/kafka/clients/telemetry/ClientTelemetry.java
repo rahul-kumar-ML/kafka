@@ -23,6 +23,7 @@ import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.message.GetTelemetrySubscriptionsResponseData;
 import org.apache.kafka.common.message.PushTelemetryResponseData;
+import org.apache.kafka.common.metrics.MetricsContext;
 import org.apache.kafka.common.requests.AbstractRequest;
 
 public interface ClientTelemetry extends Closeable {
@@ -87,4 +88,5 @@ public interface ClientTelemetry extends Closeable {
 
     ProducerTopicMetricRecorder producerTopicMetricRecorder();
 
+    void contextChange(MetricsContext context);
 }

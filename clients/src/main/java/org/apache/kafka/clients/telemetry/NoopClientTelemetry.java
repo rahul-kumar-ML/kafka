@@ -21,6 +21,7 @@ import java.util.Optional;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.message.GetTelemetrySubscriptionsResponseData;
 import org.apache.kafka.common.message.PushTelemetryResponseData;
+import org.apache.kafka.common.metrics.MetricsContext;
 import org.apache.kafka.common.requests.AbstractRequest;
 
 public class NoopClientTelemetry implements ClientTelemetry {
@@ -281,5 +282,9 @@ public class NoopClientTelemetry implements ClientTelemetry {
 
             }
         };
+    }
+
+    @Override
+    public void contextChange(MetricsContext context) {
     }
 }

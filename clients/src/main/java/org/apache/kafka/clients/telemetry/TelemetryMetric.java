@@ -25,6 +25,7 @@ public class TelemetryMetric {
 
     private final MetricType metricType;
 
+    // TODO: We will need to use a wrapper to inject resource labels into the metric value, i.e. OTLP ResourceMetrics
     private final long value;
 
     public TelemetryMetric(MetricName metricName, MetricType metricType, long value) {

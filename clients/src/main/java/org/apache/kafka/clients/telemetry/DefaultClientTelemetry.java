@@ -579,4 +579,9 @@ public class DefaultClientTelemetry implements ClientTelemetry {
     public DefaultProducerTopicMetricRecorder producerTopicMetricRecorder() {
         return producerTopicMetricRecorder;
     }
+
+    @Override
+    public void contextChange(MetricsContext context) {
+        this.telemetryMetricsReporter.contextChange(context);
+    }
 }

@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import io.opentelemetry.proto.metrics.v1.ResourceMetrics;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
@@ -200,7 +201,6 @@ public class ClientTelemetryUtils {
         return metrics.stream().map(kafkaMetric -> {
             MetricName metricName = kafkaMetric.metricName();
             Object metricValue = kafkaMetric.metricValue();
-
             // TODO: TELEMETRY_TODO: not sure if the metric value is always stored as a double,
             //                       but empirically it seems to be. Not sure if there is a better
             //                       way to handle this.
@@ -254,6 +254,10 @@ public class ClientTelemetryUtils {
             labels.maybePut(ResourceLabelConfigs.RACK_ID, config.getString(CommonClientConfigs.CLIENT_RACK_CONFIG));
 
         return create(enableMetricsPush, time, clientId, labels);
+    }
+
+    public static ClientTelemetry create(boolean enableMetricsPush, Time time, String clientId) {
+        return create(enableMetricsPush, time, clientId, new ResourceLabels());
     }
 
     public static ClientTelemetry create(boolean enableMetricsPush, Time time, String clientId, final ResourceLabels labels) {
@@ -414,7 +418,7 @@ public class ClientTelemetryUtils {
         return resourceLabels;
     }
 
-    static class ResourceLabels {
+    public static class ResourceLabels {
         private Map<String, String> resourceLabels;
 
         ResourceLabels() {
