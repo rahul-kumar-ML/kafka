@@ -49,8 +49,15 @@ public class ByteBufferAccessor implements Readable, Writable {
     }
 
     @Override
-    public void readArray(byte[] arr) {
+    public byte[] readArray(int size) {
+        int remaining = buf.remaining();
+        if (size > remaining) {
+            throw new RuntimeException("Error reading byte array of " + size + " byte(s): only " + remaining +
+             " byte(s) available");
+        }
+        byte[] arr = new byte[size];
         buf.get(arr);
+        return arr;
     }
 
     @Override
@@ -86,5 +93,18 @@ public class ByteBufferAccessor implements Readable, Writable {
     @Override
     public void writeUnsignedVarint(int i) {
         ByteUtils.writeUnsignedVarint(i, buf);
+    }
+
+    @Override
+    public int remaining() {
+        return buf.remaining();
+    }
+
+    public void flip() {
+        buf.flip();
+    }
+
+    public ByteBuffer buffer() {
+        return buf;
     }
 }
