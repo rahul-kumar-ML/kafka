@@ -51,4 +51,13 @@ public final class MessageUtil {
         bld.append("]");
         return bld.toString();
     }
+
+    public static ByteBuffer toByteBuffer(final Message message, final short version) {
+        ObjectSerializationCache cache = new ObjectSerializationCache();
+        int messageSize = message.size(cache, version);
+        ByteBufferAccessor bytes = new ByteBufferAccessor(ByteBuffer.allocate(messageSize));
+        message.write(bytes, cache, version);
+        bytes.flip();
+        return bytes.buffer();
+    }
 }
