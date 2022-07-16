@@ -26,7 +26,7 @@
     <parent>
         <groupId>org.apache.kafka</groupId>
         <artifactId>streams-quickstart</artifactId>
-        <version>7.3.0-cc-docker-ksql.107-22-ccs-rc1 </version>
+        <version>7.3.0-cc-docker-ksql.109-22-ccs-rc1 </version>
         <relativePath>..</relativePath>
     </parent>
 
