@@ -25,12 +25,17 @@ public class BackgroundStateMachine {
     private BackgroundStates currentState;
 
     public BackgroundStateMachine(BackgroundStates initialState) {
+        if(initialState == null) {
+            throw new NullPointerException("initial state cannot be null");
+        }
+        
         this.currentState = initialState;
     }
 
     public boolean transitionTo(BackgroundStates nextState) {
         if(validateStateTransition(currentState, nextState)) {
             this.currentState = nextState;
+            return true;
         }
         return false;
     }
@@ -45,6 +50,10 @@ public class BackgroundStateMachine {
     }
 
     private boolean validateStateTransition(BackgroundStates currentState, BackgroundStates nextState) {
+        if(currentState == null) {
+            return false;
+        }
+
         switch(currentState) {
             case DOWN:
                 if(nextState != BackgroundStates.INITIALIZED) {
