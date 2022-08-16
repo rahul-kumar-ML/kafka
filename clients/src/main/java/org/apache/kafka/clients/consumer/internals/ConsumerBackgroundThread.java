@@ -31,7 +31,7 @@ import java.util.Optional;
 
 public class ConsumerBackgroundThread<K,V> extends KafkaThread implements AutoCloseable {
     private static final String CONSUMER_BACKGROUND_THREAD_PREFIX = "consumer_background_thread";
-    private final Time time;
+    private Time time;
     private final LogContext logContext;
     private Logger log;
     private GroupRebalanceConfig groupRebalanceConfig;
@@ -45,7 +45,7 @@ public class ConsumerBackgroundThread<K,V> extends KafkaThread implements AutoCl
     private IsolationLevel isolationLevel;
 
     // control variables
-    private boolean closed = false;
+    private volatile boolean closed = false;
 
     public ConsumerBackgroundThread(ConsumerConfig config) {
         super(CONSUMER_BACKGROUND_THREAD_PREFIX, true);
@@ -56,20 +56,25 @@ public class ConsumerBackgroundThread<K,V> extends KafkaThread implements AutoCl
 
     }
 
+    public ConsumerBackgroundThread(ConsumerConfig config, Time time) {
+        this(config);
+        this.time = time;
+    }
+
     @Override
     public void run() {
         try {
             while (!closed) {
             }
-        } catch( Exception e) {
-            log.warn("exception: " + e);
-            e.printStackTrace();
+        } catch(Exception e) {
+            log.warn("exception caught.", e);
         }
 
     }
 
     @Override
     public void close() throws Exception {
+        this.closed = true;
     }
 
     private void configuration(ConsumerConfig config) {
