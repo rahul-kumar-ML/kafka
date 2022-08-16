@@ -35,13 +35,7 @@ public class KafkaServerEventQueue {
     }
 
     public Optional<KafkaServerEvent> poll() throws InterruptedException {
-        return Optional.ofNullable(queue.poll(timeoutMs, TimeUnit.MILLISECONDS));
-    }
-    public Optional<KafkaServerEvent> peek() throws InterruptedException {
-        Optional<KafkaServerEvent> event = Optional.ofNullable(queue.poll(timeoutMs, TimeUnit.MILLISECONDS));
-        if(event.isPresent())
-            queue.addFirst(event.get());
-        return event;
+        return Optional.ofNullable(queue.poll());
     }
 
     public boolean isEmpty() {
