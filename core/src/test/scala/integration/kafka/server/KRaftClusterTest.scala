@@ -21,7 +21,7 @@ import kafka.network.SocketServer
 import kafka.server.IntegrationTestUtils.connectAndReceive
 import kafka.testkit.{BrokerNode, KafkaClusterTestKit, TestKitNodes}
 import kafka.utils.TestUtils
-import org.apache.kafka.clients.admin.{Admin, AlterConfigOp, Config, ConfigEntry, NewPartitionReassignment, NewTopic}
+import org.apache.kafka.clients.admin.{Admin, AdminClientConfig, AlterConfigOp, Config, ConfigEntry, DescribeMetadataQuorumOptions, FeatureUpdate, NewPartitionReassignment, NewTopic, UpdateFeaturesOptions}
 import org.apache.kafka.common.{TopicPartition, TopicPartitionInfo}
 import org.apache.kafka.common.message.DescribeClusterRequestData
 import org.apache.kafka.common.network.ListenerName
@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.{Tag, Test, Timeout}
 
 import java.util
-import java.util.{Arrays, Collections, Optional}
+import java.util.{Arrays, Collections, Optional, OptionalLong, Properties}
 import org.apache.kafka.clients.admin.AlterConfigOp.OpType
 import org.apache.kafka.common.config.ConfigResource
 import org.apache.kafka.common.config.ConfigResource.Type
@@ -296,13 +296,14 @@ class KRaftClusterTest {
 
   @Test
   def testCreateClusterInvalidMetadataVersion(): Unit = {
-    assertThrows(classOf[IllegalArgumentException], () => {
-      new KafkaClusterTestKit.Builder(
-        new TestKitNodes.Builder().
-          setBootstrapMetadataVersion(MetadataVersion.IBP_2_7_IV0).
-          setNumBrokerNodes(1).
-          setNumControllerNodes(1).build()).build()
-    })
+    assertEquals("Bootstrap metadata versions before 3.3-IV0 are not supported. Can't load " +
+      "metadata from testkit", assertThrows(classOf[RuntimeException], () => {
+        new KafkaClusterTestKit.Builder(
+          new TestKitNodes.Builder().
+            setBootstrapMetadataVersion(MetadataVersion.IBP_2_7_IV0).
+            setNumBrokerNodes(1).
+            setNumControllerNodes(1).build()).build()
+    }).getMessage)
   }
 
   private def doOnStartedKafkaCluster(numControllerNodes: Int = 1,
@@ -426,15 +427,17 @@ class KRaftClusterTest {
         }, "Timed out waiting for replica assignments for topic foo. " +
           s"Wanted: ${expectedMapping}. Got: ${currentMapping}")
 
-        checkReplicaManager(
-          cluster,
-          List(
-            (0, List(true, true, false, true)),
-            (1, List(true, true, false, true)),
-            (2, List(true, true, true, true)),
-            (3, List(false, false, true, true))
+        TestUtils.retry(60000) {
+          checkReplicaManager(
+            cluster,
+            List(
+              (0, List(true, true, false, true)),
+              (1, List(true, true, false, true)),
+              (2, List(true, true, true, true)),
+              (3, List(false, false, true, true))
+            )
           )
-        )
+        }
       } finally {
         admin.close()
       }
@@ -774,6 +777,85 @@ class KRaftClusterTest {
       }
       TestUtils.waitUntilTrue(() => brokerIsAbsent(clusterImage(cluster, 1), 0),
         "Timed out waiting for broker 0 to be fenced.")
+    } finally {
+      cluster.close()
+    }
+  }
+
+  def createAdminClient(cluster: KafkaClusterTestKit): Admin = {
+    var props: Properties = null
+    props = cluster.clientProperties()
+    props.put(AdminClientConfig.CLIENT_ID_CONFIG, this.getClass.getName)
+    Admin.create(props)
+  }
+
+  @Test
+  def testDescribeQuorumRequestToBrokers() : Unit = {
+    val cluster = new KafkaClusterTestKit.Builder(
+      new TestKitNodes.Builder().
+        setNumBrokerNodes(4).
+        setNumControllerNodes(3).build()).build()
+    try {
+      cluster.format
+      cluster.startup
+      for (i <- 0 to 3) {
+        TestUtils.waitUntilTrue(() => cluster.brokers.get(i).brokerState == BrokerState.RUNNING,
+          "Broker Never started up")
+      }
+      val admin = createAdminClient(cluster)
+      try {
+        val quorumState = admin.describeMetadataQuorum(new DescribeMetadataQuorumOptions)
+        val quorumInfo = quorumState.quorumInfo.get()
+
+        assertEquals(cluster.controllers.asScala.keySet, quorumInfo.voters.asScala.map(_.replicaId).toSet)
+        assertTrue(cluster.controllers.asScala.keySet.contains(quorumInfo.leaderId),
+          s"Leader ID ${quorumInfo.leaderId} was not a controller ID.")
+
+        quorumInfo.voters.forEach { voter =>
+          assertTrue(0 < voter.logEndOffset,
+            s"logEndOffset for voter with ID ${voter.replicaId} was ${voter.logEndOffset}")
+          assertNotEquals(OptionalLong.empty(), voter.lastFetchTimestamp)
+          assertNotEquals(OptionalLong.empty(), voter.lastCaughtUpTimestamp)
+        }
+
+        assertEquals(cluster.brokers.asScala.keySet, quorumInfo.observers.asScala.map(_.replicaId).toSet)
+        quorumInfo.observers.forEach { observer =>
+          assertTrue(0 < observer.logEndOffset,
+            s"logEndOffset for observer with ID ${observer.replicaId} was ${observer.logEndOffset}")
+          assertNotEquals(OptionalLong.empty(), observer.lastFetchTimestamp)
+          assertNotEquals(OptionalLong.empty(), observer.lastCaughtUpTimestamp)
+        }
+      } finally {
+        admin.close()
+      }
+    } finally {
+      cluster.close()
+    }
+  }
+
+
+  @Test
+  def testUpdateMetadataVersion(): Unit = {
+    val cluster = new KafkaClusterTestKit.Builder(
+      new TestKitNodes.Builder().
+        setBootstrapMetadataVersion(MetadataVersion.MINIMUM_BOOTSTRAP_VERSION).
+        setNumBrokerNodes(4).
+        setNumControllerNodes(3).build()).build()
+    try {
+      cluster.format()
+      cluster.startup()
+      cluster.waitForReadyBrokers()
+      val admin = Admin.create(cluster.clientProperties())
+      try {
+        admin.updateFeatures(
+          Map(MetadataVersion.FEATURE_NAME ->
+            new FeatureUpdate(MetadataVersion.latest().featureLevel(), FeatureUpdate.UpgradeType.UPGRADE)).asJava, new UpdateFeaturesOptions
+        )
+      } finally {
+        admin.close()
+      }
+      TestUtils.waitUntilTrue(() => cluster.brokers().get(1).metadataCache.currentImage().features().metadataVersion().equals(MetadataVersion.latest()),
+        "Timed out waiting for metadata version update.")
     } finally {
       cluster.close()
     }

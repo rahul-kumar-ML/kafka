@@ -607,8 +607,8 @@ public class KafkaAdminClientTest {
                 .setErrorCode(error.code()));
     }
 
-    private static QuorumInfo defaultQuorumInfo(Boolean emptyOptionals) {
-        return new QuorumInfo(1,
+    private static QuorumInfo defaultQuorumInfo(boolean emptyOptionals) {
+        return new QuorumInfo(1, 1, 1L,
                 singletonList(new QuorumInfo.ReplicaState(1, 100,
                         emptyOptionals ? OptionalLong.empty() : OptionalLong.of(1000),
                         emptyOptionals ? OptionalLong.empty() : OptionalLong.of(1000))),
@@ -637,8 +637,8 @@ public class KafkaAdminClientTest {
             replica.setLastCaughtUpTimestamp(emptyOptionals ? -1 : 1000);
             partitions.add(new DescribeQuorumResponseData.PartitionData().setPartitionIndex(partitionIndex)
                     .setLeaderId(1)
-                    .setLeaderEpoch(0)
-                    .setHighWatermark(0)
+                    .setLeaderEpoch(1)
+                    .setHighWatermark(1)
                     .setCurrentVoters(singletonList(replica))
                     .setObservers(singletonList(replica))
                     .setErrorCode(partitionLevelError.code()));
@@ -5189,6 +5189,29 @@ public class KafkaAdminClientTest {
             future = env.adminClient().describeMetadataQuorum().quorumInfo();
             quorumInfo = future.get();
             assertEquals(defaultQuorumInfo(true), quorumInfo);
+        }
+    }
+
+    @Test
+    public void testDescribeMetadataQuorumRetriableError() throws Exception {
+        try (final AdminClientUnitTestEnv env = mockClientEnv()) {
+            env.kafkaClient().setNodeApiVersions(NodeApiVersions.create(ApiKeys.DESCRIBE_QUORUM.id,
+                ApiKeys.DESCRIBE_QUORUM.oldestVersion(),
+                ApiKeys.DESCRIBE_QUORUM.latestVersion()));
+
+            // First request fails with a NOT_LEADER_OR_FOLLOWER error (which is retriable)
+            env.kafkaClient().prepareResponse(
+                body -> body instanceof DescribeQuorumRequest,
+                prepareDescribeQuorumResponse(Errors.NONE, Errors.NOT_LEADER_OR_FOLLOWER, false, false, false, false, false));
+
+            // The second request succeeds
+            env.kafkaClient().prepareResponse(
+                body -> body instanceof DescribeQuorumRequest,
+                prepareDescribeQuorumResponse(Errors.NONE, Errors.NONE, false, false, false, false, false));
+
+            KafkaFuture<QuorumInfo> future = env.adminClient().describeMetadataQuorum().quorumInfo();
+            QuorumInfo quorumInfo = future.get();
+            assertEquals(defaultQuorumInfo(false), quorumInfo);
         }
     }
 
