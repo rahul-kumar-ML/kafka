@@ -218,6 +218,7 @@ if (file('.git').exists()) {
     excludes.addAll([
         '**/.git/**',
         '**/build/**',
+        '.github/CODEOWNERS',
         'CONTRIBUTING.md',
         'PULL_REQUEST_TEMPLATE.md',
         'gradlew',
