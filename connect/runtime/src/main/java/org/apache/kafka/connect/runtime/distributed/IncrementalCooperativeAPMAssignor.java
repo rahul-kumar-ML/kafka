@@ -443,7 +443,7 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
         List<Integer> connectorTasks = configuredTasks.stream().filter(v -> connector.equals(v.connector())).map(ConnectorTaskId::task).sorted().collect(Collectors.toList());
         int length = connectorTasks.size();
 
-        // FixMe: rather than using 2/4/5 etc. check the task config to find out #topics its supposed to consume from
+        // FixMe: rather than using 2/5 etc. check the task config to find out #topics its supposed to consume from
         if (connector.startsWith("s3") && length % 2 == 0) {
 
             // Above condition checks for S3 connector to have an even task count as we are consuming from metric & log
@@ -451,16 +451,6 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
             numTopicsToConsumeFrom = 2;
 
             if (groupNum < 1 || groupNum > 2) {
-                return null;
-            }
-
-        } else if (connector.startsWith("es") && length % 4 == 0) {
-
-            // Above condition checks for ES connector to have a task count which is a multiple of 4 as we are consuming
-            // from log, metric, control & trace topics. Old profiles
-            numTopicsToConsumeFrom = 4;
-
-            if (groupNum < 1 || groupNum > 4) {
                 return null;
             }
 
