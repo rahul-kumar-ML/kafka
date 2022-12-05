@@ -29,7 +29,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <kafka.version>7.4.0-196-ccs</kafka.version>
+        <kafka.version>7.4.0-common.4-196-ccs-rc1</kafka.version>
         <slf4j.version>1.7.36</slf4j.version>
     </properties>
 
