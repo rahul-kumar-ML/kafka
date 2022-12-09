@@ -26,7 +26,6 @@ def config = jobConfig {
     runMergeCheck = false
 }
 
-
 def job = {
     // https://github.com/confluentinc/common-tools/blob/master/confluent/config/dev/versions.json
     def kafkaMuckrakeVersionMap = [
@@ -49,7 +48,7 @@ def job = {
     }
 
     if (config.publish && config.isDevJob) {
-      withVaultFile([["gradle/artifactory_snapshots_settings", "settings_file", "${env.WORKSPACE}/init.gradle", "GRADLE_NEXUS_SETTINGS"]]) {
+      withGradleFile([["gradle/artifactory_snapshots_settings", "settings_file", "${env.WORKSPACE}/init.gradle", "GRADLE_NEXUS_SETTINGS"]]) {
           stage("Publish to artifactory") {
               sh "./gradlew --init-script ${GRADLE_NEXUS_SETTINGS} --no-daemon uploadArchivesAll"
           }
