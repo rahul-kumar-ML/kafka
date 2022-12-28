@@ -203,7 +203,28 @@ subprojects {
   task allDeps(type: DependencyReportTask) {}
   // enable running :dependencyInsight task recursively on all subprojects
   // eg: ./gradlew allDepInsight --configuration runtime --dependency com.fasterxml.jackson.core:jackson-databind
-  task allDepInsight(type: DependencyInsightReportTask) doLast {}
+  task allDepInsight(type: DependencyInsightReportTask) {showingAllVariants = false} doLast {}
+
+  apply plugin: 'java-library'
+  apply plugin: 'checkstyle'
+  apply plugin: "com.github.spotbugs"
+  apply plugin: 'org.gradle.test-retry'
+
+  // We use the shadow plugin for the jmh-benchmarks module and the `-all` jar can get pretty large, so
+  // don't publish it
+  // We also don't publish artifacts for kafka-streams-upgrade-system-tests since they are not necessary,
+  // and were resulting in conflicts due to duplicate artifacts
+  def shouldPublish = !project.name.equals('jmh-benchmarks') && !project.name.startsWith("kafka-streams-upgrade-system-tests")
+
+  if (shouldPublish) {
+    apply plugin: 'maven-publish'
+    apply plugin: 'signing'
+
+    // Add aliases for the task names used by the maven plugin for backwards compatibility
+    // The maven plugin was replaced by the maven-publish plugin in Gradle 7.0
+    tasks.register('install').configure { dependsOn(publishToMavenLocal) }
+    tasks.register('uploadArchives').configure { dependsOn(publish) }
+  }
 
   // apply the eclipse plugin only to subprojects that hold code. 'connect' is just a folder.
   if (!project.name.equals('connect')) {
