@@ -161,13 +161,17 @@ class KafkaRaftServer(
 }
 
 object KafkaRaftServer {
-  val MetadataTopic = Topic.METADATA_TOPIC_NAME
-  val MetadataPartition = Topic.METADATA_TOPIC_PARTITION
+  val MetadataTopic = Topic.CLUSTER_METADATA_TOPIC_NAME
+  val MetadataPartition = Topic.CLUSTER_METADATA_TOPIC_PARTITION
   val MetadataTopicId = Uuid.METADATA_TOPIC_ID
 
   sealed trait ProcessRole
-  case object BrokerRole extends ProcessRole
-  case object ControllerRole extends ProcessRole
+  case object BrokerRole extends ProcessRole {
+    override def toString(): String = "broker"
+  }
+  case object ControllerRole extends ProcessRole {
+    override def toString(): String = "controller"
+  }
 
   /**
    * Initialize the configured log directories, including both [[KafkaConfig.MetadataLogDirProp]]

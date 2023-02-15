@@ -54,7 +54,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 
 /**
- * WorkerTask that uses a SourceTask to ingest data into Kafka, with support for exactly-once delivery guarantees.
+ * WorkerTask that uses a SourceTask to ingest data into Kafka, with support for exactly-once semantics.
  */
 class ExactlyOnceWorkerSourceTask extends AbstractWorkerSourceTask {
     private static final Logger log = LoggerFactory.getLogger(ExactlyOnceWorkerSourceTask.class);
@@ -278,18 +278,22 @@ class ExactlyOnceWorkerSourceTask extends AbstractWorkerSourceTask {
             });
         }
 
-        // Commit the transaction
-        // Blocks until all outstanding records have been sent and ack'd
-        try {
-            producer.commitTransaction();
-        } catch (Throwable t) {
-            log.error("{} Failed to commit producer transaction", ExactlyOnceWorkerSourceTask.this, t);
-            flushError.compareAndSet(null, t);
+        // Only commit the transaction if we were able to serialize the offsets.
+        // Otherwise, we may commit source records without committing their offsets
+        Throwable error = flushError.get();
+        if (error == null) {
+            try {
+                // Commit the transaction
+                // Blocks until all outstanding records have been sent and ack'd
+                producer.commitTransaction();
+            } catch (Throwable t) {
+                log.error("{} Failed to commit producer transaction", ExactlyOnceWorkerSourceTask.this, t);
+                flushError.compareAndSet(null, t);
+            }
+            transactionOpen = false;
         }
 
-        transactionOpen = false;
-
-        Throwable error = flushError.get();
+        error = flushError.get();
         if (error != null) {
             recordCommitFailure(time.milliseconds() - started, null);
             offsetWriter.cancelFlush();

@@ -655,6 +655,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
         // If we only have connector config updates, we can just bounce the updated connectors that are
         // currently assigned to this worker.
         Set<String> localConnectors = assignment == null ? Collections.emptySet() : new HashSet<>(assignment.connectors());
+        Collection<Callable<Void>> connectorsToStart = new ArrayList<>();
         log.trace("Processing connector config updates; "
                 + "currently-owned connectors are {}, and to-be-updated connectors are {}",
                 localConnectors,
@@ -671,13 +672,10 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
             worker.stopAndAwaitConnector(connectorName);
             // The update may be a deletion, so verify we actually need to restart the connector
             if (remains) {
-                startConnector(connectorName, (error, result) -> {
-                    if (error != null) {
-                        log.error("Failed to start connector '" + connectorName + "'", error);
-                    }
-                });
+                connectorsToStart.add(getConnectorStartingCallable(connectorName));
             }
         }
+        startAndStop(connectorsToStart);
     }
 
     private void processTargetStateChanges(Set<String> connectorTargetStateChanges) {
@@ -938,18 +936,18 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                         if (exactlyOnceSupport == null) {
                             validationErrorMessage = "The connector does not implement the API required for preflight validation of exactly-once "
                                     + "source support. Please consult the documentation for the connector to determine whether it supports exactly-once "
-                                    + "guarantees, and then consider reconfiguring the connector to use the value \""
+                                    + "semantics, and then consider reconfiguring the connector to use the value \""
                                     + SourceConnectorConfig.ExactlyOnceSupportLevel.REQUESTED
                                     + "\" for this property (which will disable this preflight check and allow the connector to be created).";
                         } else if (ExactlyOnceSupport.UNSUPPORTED.equals(exactlyOnceSupport)) {
-                            validationErrorMessage = "The connector does not support exactly-once delivery guarantees with the provided configuration.";
+                            validationErrorMessage = "The connector does not support exactly-once semantics with the provided configuration.";
                         } else {
                             throw new ConnectException("Unexpected value returned from SourceConnector::exactlyOnceSupport: " + exactlyOnceSupport);
                         }
                         validatedExactlyOnceSupport.addErrorMessage(validationErrorMessage);
                     }
                 } catch (Exception e) {
-                    log.error("Failed while validating connector support for exactly-once guarantees", e);
+                    log.error("Failed while validating connector support for exactly-once semantics", e);
                     String validationErrorMessage = "An unexpected error occurred during validation";
                     String failureMessage = e.getMessage();
                     if (failureMessage != null && !failureMessage.trim().isEmpty()) {
