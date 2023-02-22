@@ -336,7 +336,7 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
         List<TaskGroup> allGroups = new ArrayList<>();
 
         // Below loop i.e. 1 to 5 denotes the task groups. 1st group is for log data, 2nd is for metric and so on
-        // es connectors will need access to all five groups but s3 connectors only need first 2 groups
+        // es connectors will need access to all five groups but archival connectors only need first 2 groups
         // Above condition has been handled in getTaskGroup function
         for (int t : IntStream.range(1, 6).toArray()) {
             for (String connector : configuredConnectors.stream().sorted().collect(Collectors.toList())) {
@@ -444,10 +444,11 @@ public class IncrementalCooperativeAPMAssignor implements ConnectAssignor {
         int length = connectorTasks.size();
 
         // FixMe: rather than using 2/5 etc. check the task config to find out #topics its supposed to consume from
-        if (connector.startsWith("s3") && length % 2 == 0) {
+        if ((connector.startsWith("s3") || connector.startsWith("wasb-") ||
+                connector.startsWith("gcs-")) && length % 2 == 0) {
 
-            // Above condition checks for S3 connector to have an even task count as we are consuming from metric & log
-            // topics only
+            // Above condition checks for archival connector to have an even task count
+            // as we are consuming from metric & log topics only
             numTopicsToConsumeFrom = 2;
 
             if (groupNum < 1 || groupNum > 2) {

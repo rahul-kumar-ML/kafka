@@ -301,7 +301,8 @@ class WorkerSinkTask extends WorkerTask {
 
         SinkConnectorConfig.validate(taskConfig);
 
-        if (id.connector().startsWith("es-") || id.connector().startsWith("s3-")) {
+        if (id.connector().startsWith("es-") || id.connector().startsWith("s3-") ||
+                id.connector().startsWith("wasb-") || id.connector().startsWith("gcs-")) {
 
             // maximum number of tasks that are being initialised. This config helps to decide which topic to consume from.
             // Even if assignor makes a mistake (maybe due to partial config read etc.) we use the task-id and
@@ -309,9 +310,13 @@ class WorkerSinkTask extends WorkerTask {
             int maxTasks = Integer.parseInt(taskConfig.get(SinkConnectorConfig.TASKS_MAX_CONFIG));
 
             if (id.connector().startsWith("es-") && maxTasks % 5 != 0) {
+
                 throw new ConnectException(String.format("Elasticsearch connector %s has a task count which isn't multiple of 5", id.connector()));
-            } else if (id.connector().startsWith("s3-") && maxTasks % 2 != 0) {
-                throw new ConnectException(String.format("S3 connector %s has a task count which isn't multiple of 2", id.connector()));
+
+            } else if ((id.connector().startsWith("s3-") || id.connector().startsWith("wasb-") ||
+                    id.connector().startsWith("gcs-")) && maxTasks % 2 != 0) {
+
+                throw new ConnectException(String.format("Archival connector %s has a task count which isn't multiple of 2", id.connector()));
             }
 
             // Number of tasks in group after dividing into n groups (n==5 for ES and n==2 for S3 connector)
