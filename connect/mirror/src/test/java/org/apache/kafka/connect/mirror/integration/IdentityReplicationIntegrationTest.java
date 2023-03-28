@@ -18,7 +18,6 @@ package org.apache.kafka.connect.mirror.integration;
 
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.TopicPartition;
@@ -27,7 +26,6 @@ import org.apache.kafka.connect.mirror.MirrorClient;
 import org.apache.kafka.connect.mirror.MirrorHeartbeatConnector;
 import org.apache.kafka.connect.mirror.MirrorMakerConfig;
 
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -107,11 +105,8 @@ public class IdentityReplicationIntegrationTest extends MirrorConnectorsIntegrat
         assertTrue(backup.kafka().consume(1, CHECKPOINT_DURATION_MS, "primary.checkpoints.internal").count() > 0,
                 "Checkpoints were not emitted downstream to backup cluster.");
 
-        Map<TopicPartition, OffsetAndMetadata> backupOffsets = backupClient.remoteConsumerOffsets(consumerGroupName, PRIMARY_CLUSTER_ALIAS,
-                Duration.ofMillis(CHECKPOINT_DURATION_MS));
-
-        assertTrue(backupOffsets.containsKey(
-                new TopicPartition("test-topic-1", 0)), "Offsets not translated downstream to backup cluster. Found: " + backupOffsets);
+        Map<TopicPartition, OffsetAndMetadata> backupOffsets = waitForCheckpointOnAllPartitions(
+                backupClient, consumerGroupName, PRIMARY_CLUSTER_ALIAS, "test-topic-1");
 
         // Failover consumer group to backup cluster.
         try (Consumer<byte[], byte[]> primaryConsumer = backup.kafka().createConsumer(Collections.singletonMap("group.id", consumerGroupName))) {
@@ -192,8 +187,8 @@ public class IdentityReplicationIntegrationTest extends MirrorConnectorsIntegrat
         }
     }
 
-    @Test
-    public void testOneWayReplicationWithAutoOffsetSync() throws InterruptedException {
+    @Override
+    public void testOneWayReplicationWithOffsetSyncs(int offsetLagMax) throws InterruptedException {
         produceMessages(primary, "test-topic-1");
         String consumerGroupName = "consumer-group-testOneWayReplicationWithAutoOffsetSync";
         Map<String, Object> consumerProps  = new HashMap<String, Object>() {{
@@ -210,6 +205,7 @@ public class IdentityReplicationIntegrationTest extends MirrorConnectorsIntegrat
         // enable automated consumer group offset sync
         mm2Props.put("sync.group.offsets.enabled", "true");
         mm2Props.put("sync.group.offsets.interval.seconds", "1");
+        mm2Props.put("offset.lag.max", Integer.toString(offsetLagMax));
         // one way replication from primary to backup
         mm2Props.put(BACKUP_CLUSTER_ALIAS + "->" + PRIMARY_CLUSTER_ALIAS + ".enabled", "false");
 
@@ -221,18 +217,14 @@ public class IdentityReplicationIntegrationTest extends MirrorConnectorsIntegrat
         topicShouldNotBeCreated(primary, "backup.test-topic-1");
         waitForTopicCreated(backup, "test-topic-1");
         // create a consumer at backup cluster with same consumer group Id to consume 1 topic
-        Consumer<byte[], byte[]> backupConsumer = backup.kafka().createConsumerAndSubscribeTo(
-                consumerProps, "test-topic-1");
+        try (Consumer<byte[], byte[]> backupConsumer = backup.kafka().createConsumerAndSubscribeTo(
+                consumerProps, "test-topic-1")) {
 
-        waitForConsumerGroupOffsetSync(backup, backupConsumer, Collections.singletonList("test-topic-1"),
-                consumerGroupName, NUM_RECORDS_PRODUCED);
+            waitForConsumerGroupFullSync(backup, Collections.singletonList("test-topic-1"),
+                    consumerGroupName, NUM_RECORDS_PRODUCED, offsetLagMax);
 
-        ConsumerRecords<byte[], byte[]> records = backupConsumer.poll(CONSUMER_POLL_TIMEOUT_MS);
-
-        // the size of consumer record should be zero, because the offsets of the same consumer group
-        // have been automatically synchronized from primary to backup by the background job, so no
-        // more records to consume from the replicated topic by the same consumer group at backup cluster
-        assertEquals(0, records.count(), "consumer record size is not zero");
+            assertDownstreamRedeliveriesBoundedByMaxLag(backupConsumer, offsetLagMax);
+        }
 
         // now create a new topic in primary cluster
         primary.kafka().createTopic("test-topic-2", NUM_PARTITIONS);
@@ -244,22 +236,22 @@ public class IdentityReplicationIntegrationTest extends MirrorConnectorsIntegrat
 
         // create a consumer at primary cluster to consume the new topic
         try (Consumer<byte[], byte[]> consumer1 = primary.kafka().createConsumerAndSubscribeTo(Collections.singletonMap(
-                "group.id", "consumer-group-1"), "test-topic-2")) {
+                "group.id", consumerGroupName), "test-topic-2")) {
             // we need to wait for consuming all the records for MM2 replicating the expected offsets
             waitForConsumingAllRecords(consumer1, NUM_RECORDS_PRODUCED);
         }
 
         // create a consumer at backup cluster with same consumer group Id to consume old and new topic
-        backupConsumer = backup.kafka().createConsumerAndSubscribeTo(Collections.singletonMap(
-                "group.id", consumerGroupName), "test-topic-1", "test-topic-2");
+        try (Consumer<byte[], byte[]> backupConsumer = backup.kafka().createConsumerAndSubscribeTo(Collections.singletonMap(
+                "group.id", consumerGroupName), "test-topic-1", "test-topic-2")) {
 
-        waitForConsumerGroupOffsetSync(backup, backupConsumer, Arrays.asList("test-topic-1", "test-topic-2"),
-                consumerGroupName, NUM_RECORDS_PRODUCED);
+            waitForConsumerGroupFullSync(backup, Arrays.asList("test-topic-1", "test-topic-2"),
+                    consumerGroupName, NUM_RECORDS_PRODUCED, offsetLagMax);
 
-        records = backupConsumer.poll(CONSUMER_POLL_TIMEOUT_MS);
-        // similar reasoning as above, no more records to consume by the same consumer group at backup cluster
-        assertEquals(0, records.count(), "consumer record size is not zero");
-        backupConsumer.close();
+            assertDownstreamRedeliveriesBoundedByMaxLag(backupConsumer, offsetLagMax);
+        }
+
+        assertMonotonicCheckpoints(backup, "primary.checkpoints.internal");
     }
 
     /*
