@@ -14,22 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.kafka.clients.consumer.internals.events;
+package org.apache.kafka.clients.consumer.internals;
 
-import java.util.Objects;
+import org.apache.kafka.common.utils.LogContext;
+import org.apache.kafka.common.utils.Time;
 
-/**
- * This is the abstract definition of the events created by the KafkaConsumer API
- */
-public abstract class ApplicationEvent {
+public class ConsumerContext {
 
-    public enum Type {
-        NOOP, COMMIT, POLL, FETCH, FETCH_COMMITTED_OFFSET,
-    }
+    public final LogContext logContext;
 
-    public final Type type;
+    public final Time time;
 
-    protected ApplicationEvent(Type type) {
-        this.type = Objects.requireNonNull(type);
+    public ConsumerContext(LogContext logContext, Time time) {
+        this.logContext = logContext;
+        this.time = time;
     }
 }

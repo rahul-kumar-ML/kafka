@@ -16,20 +16,25 @@
  */
 package org.apache.kafka.clients.consumer.internals.events;
 
-import java.util.Objects;
+import org.apache.kafka.clients.consumer.internals.CompletedFetch;
+
+import java.util.Queue;
+import java.util.StringJoiner;
 
 /**
- * This is the abstract definition of the events created by the KafkaConsumer API
+ * This event signals the background thread to submit a fetch request.
  */
-public abstract class ApplicationEvent {
+public class FetchEvent<K, V> extends CompletableApplicationEvent<Queue<CompletedFetch<K, V>>> {
 
-    public enum Type {
-        NOOP, COMMIT, POLL, FETCH, FETCH_COMMITTED_OFFSET,
+    public FetchEvent() {
+        super(Type.FETCH);
     }
 
-    public final Type type;
-
-    protected ApplicationEvent(Type type) {
-        this.type = Objects.requireNonNull(type);
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", FetchEvent.class.getSimpleName() + "[", "]")
+                .add("future=" + future)
+                .add("type=" + type)
+                .toString();
     }
 }

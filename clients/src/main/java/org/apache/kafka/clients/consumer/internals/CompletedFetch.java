@@ -58,7 +58,7 @@ import java.util.Set;
  * @param <K> Record key type
  * @param <V> Record value type
  */
-class CompletedFetch<K, V> {
+public class CompletedFetch<K, V> {
 
     final TopicPartition partition;
     final FetchResponseData.PartitionData partitionData;
@@ -72,6 +72,7 @@ class CompletedFetch<K, V> {
     private final Logger log;
     private final SubscriptionState subscriptions;
     private final FetchConfig<K, V> fetchConfig;
+    private final Deserializers<K, V> deserializers;
     private final BufferSupplier decompressionBufferSupplier;
     private final Iterator<? extends RecordBatch> batches;
     private final Set<Long> abortedProducerIds;
@@ -98,6 +99,7 @@ class CompletedFetch<K, V> {
         this.log = logContext.logger(CompletedFetch.class);
         this.subscriptions = subscriptions;
         this.fetchConfig = fetchConfig;
+        this.deserializers = null;
         this.decompressionBufferSupplier = decompressionBufferSupplier;
         this.partition = partition;
         this.partitionData = partitionData;
@@ -297,10 +299,10 @@ class CompletedFetch<K, V> {
             Headers headers = new RecordHeaders(record.headers());
             ByteBuffer keyBytes = record.key();
             byte[] keyByteArray = keyBytes == null ? null : org.apache.kafka.common.utils.Utils.toArray(keyBytes);
-            K key = keyBytes == null ? null : fetchConfig.keyDeserializer.deserialize(partition.topic(), headers, keyByteArray);
+            K key = keyBytes == null ? null : deserializers.keyDeserializer.deserialize(partition.topic(), headers, keyByteArray);
             ByteBuffer valueBytes = record.value();
             byte[] valueByteArray = valueBytes == null ? null : Utils.toArray(valueBytes);
-            V value = valueBytes == null ? null : fetchConfig.valueDeserializer.deserialize(partition.topic(), headers, valueByteArray);
+            V value = valueBytes == null ? null : deserializers.valueDeserializer.deserialize(partition.topic(), headers, valueByteArray);
             return new ConsumerRecord<>(partition.topic(), partition.partition(), offset,
                     timestamp, timestampType,
                     keyByteArray == null ? ConsumerRecord.NULL_SIZE : keyByteArray.length,

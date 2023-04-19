@@ -32,27 +32,26 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.Optional;
+import java.util.concurrent.LinkedBlockingQueue;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 
 public class CoordinatorRequestManagerTest {
+
     private static final int RETRY_BACKOFF_MS = 500;
     private static final String GROUP_ID = "group-1";
-    private MockTime time;
-    private ErrorEventHandler errorEventHandler;
+    private PrototypeAsyncConsumerContext consumerContext;
     private Node node;
 
     @BeforeEach
     public void setup() {
-        this.time = new MockTime(0);
+        this.consumerContext = new PrototypeAsyncConsumerContext(new LogContext(),
+                new MockTime(0),
+                new LinkedBlockingQueue<>(),
+                new LinkedBlockingQueue<>());
         this.node = new Node(1, "localhost", 9092);
-        this.errorEventHandler = mock(ErrorEventHandler.class);
     }
 
     @Test
@@ -66,7 +65,7 @@ public class CoordinatorRequestManagerTest {
         assertEquals(node.host(), coordinatorOpt.get().host());
         assertEquals(node.port(), coordinatorOpt.get().port());
 
-        NetworkClientDelegate.PollResult pollResult = coordinatorManager.poll(time.milliseconds());
+        NetworkClientDelegate.PollResult pollResult = coordinatorManager.poll(consumerContext.time.milliseconds());
         assertEquals(Collections.emptyList(), pollResult.unsentRequests);
     }
 
@@ -81,13 +80,13 @@ public class CoordinatorRequestManagerTest {
         // been demoted. This can cause a tight loop in which FindCoordinator continues to
         // return node X while that node continues to reply with NOT_COORDINATOR. Hence we
         // still want to ensure a backoff after successfully finding the coordinator.
-        coordinatorManager.markCoordinatorUnknown("coordinator changed", time.milliseconds());
-        assertEquals(Collections.emptyList(), coordinatorManager.poll(time.milliseconds()).unsentRequests);
+        coordinatorManager.markCoordinatorUnknown("coordinator changed", consumerContext.time.milliseconds());
+        assertEquals(Collections.emptyList(), coordinatorManager.poll(consumerContext.time.milliseconds()).unsentRequests);
 
-        time.sleep(RETRY_BACKOFF_MS - 1);
-        assertEquals(Collections.emptyList(), coordinatorManager.poll(time.milliseconds()).unsentRequests);
+        consumerContext.time.sleep(RETRY_BACKOFF_MS - 1);
+        assertEquals(Collections.emptyList(), coordinatorManager.poll(consumerContext.time.milliseconds()).unsentRequests);
 
-        time.sleep(RETRY_BACKOFF_MS);
+        consumerContext.time.sleep(RETRY_BACKOFF_MS);
         expectFindCoordinatorRequest(coordinatorManager, Errors.NONE);
         assertTrue(coordinatorManager.coordinator().isPresent());
     }
@@ -96,12 +95,12 @@ public class CoordinatorRequestManagerTest {
     public void testBackoffAfterRetriableFailure() {
         CoordinatorRequestManager coordinatorManager = setupCoordinatorManager(GROUP_ID);
         expectFindCoordinatorRequest(coordinatorManager, Errors.COORDINATOR_LOAD_IN_PROGRESS);
-        verifyNoInteractions(errorEventHandler);
+        assertEquals(0, consumerContext.backgroundEventQueue.size());
 
-        time.sleep(RETRY_BACKOFF_MS - 1);
-        assertEquals(Collections.emptyList(), coordinatorManager.poll(time.milliseconds()).unsentRequests);
+        consumerContext.time.sleep(RETRY_BACKOFF_MS - 1);
+        assertEquals(Collections.emptyList(), coordinatorManager.poll(consumerContext.time.milliseconds()).unsentRequests);
 
-        time.sleep(1);
+        consumerContext.time.sleep(1);
         expectFindCoordinatorRequest(coordinatorManager, Errors.NONE);
     }
 
@@ -110,19 +109,20 @@ public class CoordinatorRequestManagerTest {
         CoordinatorRequestManager coordinatorManager = setupCoordinatorManager(GROUP_ID);
         expectFindCoordinatorRequest(coordinatorManager, Errors.GROUP_AUTHORIZATION_FAILED);
 
-        verify(errorEventHandler).handle(argThat(exception -> {
-            if (!(exception instanceof GroupAuthorizationException)) {
-                return false;
-            }
-            GroupAuthorizationException groupAuthException = (GroupAuthorizationException) exception;
-            return groupAuthException.groupId().equals(GROUP_ID);
-        }));
+        fail("Always");
+//        verify(errorEventHandler).handle(argThat(exception -> {
+//            if (!(exception instanceof GroupAuthorizationException)) {
+//                return false;
+//            }
+//            GroupAuthorizationException groupAuthException = (GroupAuthorizationException) exception;
+//            return groupAuthException.groupId().equals(GROUP_ID);
+//        }));
 
-        time.sleep(RETRY_BACKOFF_MS - 1);
-        assertEquals(Collections.emptyList(), coordinatorManager.poll(time.milliseconds()).unsentRequests);
+        consumerContext.time.sleep(RETRY_BACKOFF_MS - 1);
+        assertEquals(Collections.emptyList(), coordinatorManager.poll(consumerContext.time.milliseconds()).unsentRequests);
 
-        time.sleep(1);
-        assertEquals(1, coordinatorManager.poll(time.milliseconds()).unsentRequests.size());
+        consumerContext.time.sleep(1);
+        assertEquals(1, coordinatorManager.poll(consumerContext.time.milliseconds()).unsentRequests.size());
         assertEquals(Optional.empty(), coordinatorManager.coordinator());
     }
 
@@ -149,7 +149,7 @@ public class CoordinatorRequestManagerTest {
         CoordinatorRequestManager  coordinatorManager,
         Errors error
     ) {
-        NetworkClientDelegate.PollResult res = coordinatorManager.poll(time.milliseconds());
+        NetworkClientDelegate.PollResult res = coordinatorManager.poll(consumerContext.time.milliseconds());
         assertEquals(1, res.unsentRequests.size());
 
         NetworkClientDelegate.UnsentRequest unsentRequest = res.unsentRequests.get(0);
@@ -160,35 +160,26 @@ public class CoordinatorRequestManagerTest {
     }
 
     private CoordinatorRequestManager setupCoordinatorManager(String groupId) {
-        return new CoordinatorRequestManager(
-            time,
-            new LogContext(),
-            RETRY_BACKOFF_MS,
-            this.errorEventHandler,
-            groupId
-        );
+        return new CoordinatorRequestManager(consumerContext, RETRY_BACKOFF_MS, groupId);
     }
 
-    private ClientResponse buildResponse(
-        NetworkClientDelegate.UnsentRequest request,
-        Errors error
-    ) {
+    private ClientResponse buildResponse(NetworkClientDelegate.UnsentRequest request, Errors error) {
         AbstractRequest abstractRequest = request.requestBuilder().build();
         assertTrue(abstractRequest instanceof FindCoordinatorRequest);
         FindCoordinatorRequest findCoordinatorRequest = (FindCoordinatorRequest) abstractRequest;
 
         FindCoordinatorResponse findCoordinatorResponse =
             FindCoordinatorResponse.prepareResponse(error, GROUP_ID, node);
+        long milliseconds = consumerContext.time.milliseconds();
         return new ClientResponse(
-            new RequestHeader(ApiKeys.FIND_COORDINATOR, findCoordinatorRequest.version(), "", 1),
-            request.callback(),
-            node.idString(),
-            time.milliseconds(),
-            time.milliseconds(),
-            false,
-            null,
-            null,
-            findCoordinatorResponse
-        );
+                new RequestHeader(ApiKeys.FIND_COORDINATOR, findCoordinatorRequest.version(), "", 1),
+                request.callback(),
+                node.idString(),
+                milliseconds,
+                milliseconds,
+                false,
+                null,
+                null,
+                findCoordinatorResponse);
     }
 }

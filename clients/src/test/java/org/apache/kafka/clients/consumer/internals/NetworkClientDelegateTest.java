@@ -36,6 +36,7 @@ import java.util.Collections;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import static org.apache.kafka.clients.consumer.ConsumerConfig.GROUP_ID_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
@@ -104,7 +105,11 @@ public class NetworkClientDelegateTest {
         properties.put(VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         properties.put(GROUP_ID_CONFIG, GROUP_ID);
         properties.put(REQUEST_TIMEOUT_MS_CONFIG, REQUEST_TIMEOUT_MS);
-        return new NetworkClientDelegate(this.time, new ConsumerConfig(properties), logContext, this.client);
+        return new NetworkClientDelegate(
+                new PrototypeAsyncConsumerContext(logContext, this.time, new LinkedBlockingQueue<>(), new LinkedBlockingQueue<>()),
+                new ConsumerConfig(properties),
+                this.client
+        );
     }
 
     public NetworkClientDelegate.UnsentRequest newUnsentFindCoordinatorRequest() {

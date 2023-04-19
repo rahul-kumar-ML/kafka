@@ -14,22 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.kafka.clients.consumer.internals.events;
+package org.apache.kafka.clients.consumer.internals;
 
-import java.util.Objects;
+import org.apache.kafka.common.TopicPartition;
 
-/**
- * This is the abstract definition of the events created by the KafkaConsumer API
- */
-public abstract class ApplicationEvent {
+public class FetchUtils {
 
-    public enum Type {
-        NOOP, COMMIT, POLL, FETCH, FETCH_COMMITTED_OFFSET,
-    }
-
-    public final Type type;
-
-    protected ApplicationEvent(Type type) {
-        this.type = Objects.requireNonNull(type);
+    public static void requestMetadataUpdate(final ConsumerMetadata metadata,
+                                             final SubscriptionState subscriptions,
+                                             final TopicPartition topicPartition) {
+        metadata.requestUpdate();
+        subscriptions.clearPreferredReadReplica(topicPartition);
     }
 }

@@ -52,9 +52,10 @@ import java.util.stream.Collectors;
 public class CommitRequestManager implements RequestManager {
     // TODO: current in ConsumerConfig but inaccessible in the internal package.
     private static final String THROW_ON_FETCH_STABLE_OFFSET_UNSUPPORTED = "internal.throw.on.fetch.stable.offset.unsupported";
-    // TODO: We will need to refactor the subscriptionState
-    private final SubscriptionState subscriptionState;
+
     private final Logger log;
+    private final PrototypeAsyncConsumerContext consumerContext;
+    private final SubscriptionState subscriptionState;
     private final Optional<AutoCommitState> autoCommitState;
     private final CoordinatorRequestManager coordinatorRequestManager;
     private final GroupState groupState;
@@ -62,20 +63,19 @@ public class CommitRequestManager implements RequestManager {
     private final boolean throwOnFetchStableOffsetUnsupported;
     final PendingRequests pendingRequests;
 
-    public CommitRequestManager(
-            final Time time,
-            final LogContext logContext,
-            final SubscriptionState subscriptionState,
-            final ConsumerConfig config,
-            final CoordinatorRequestManager coordinatorRequestManager,
-            final GroupState groupState) {
+    public CommitRequestManager(final PrototypeAsyncConsumerContext consumerContext,
+                                final SubscriptionState subscriptionState,
+                                final ConsumerConfig config,
+                                final CoordinatorRequestManager coordinatorRequestManager,
+                                final GroupState groupState) {
         Objects.requireNonNull(coordinatorRequestManager, "Coordinator is needed upon committing offsets");
-        this.log = logContext.logger(getClass());
+        this.log = consumerContext.logContext.logger(getClass());
+        this.consumerContext = consumerContext;
         this.pendingRequests = new PendingRequests();
         if (config.getBoolean(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG)) {
             final long autoCommitInterval =
                     Integer.toUnsignedLong(config.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG));
-            this.autoCommitState = Optional.of(new AutoCommitState(time, autoCommitInterval));
+            this.autoCommitState = Optional.of(new AutoCommitState(consumerContext.time, autoCommitInterval));
         } else {
             this.autoCommitState = Optional.empty();
         }

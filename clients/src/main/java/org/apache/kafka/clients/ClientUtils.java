@@ -19,8 +19,10 @@ package org.apache.kafka.clients;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.SaslConfigs;
+import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.network.ChannelBuilder;
 import org.apache.kafka.common.network.ChannelBuilders;
+import org.apache.kafka.common.network.Selector;
 import org.apache.kafka.common.security.JaasContext;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.apache.kafka.common.utils.LogContext;
@@ -42,6 +44,12 @@ public final class ClientUtils {
     private static final Logger log = LoggerFactory.getLogger(ClientUtils.class);
 
     private ClientUtils() {
+    }
+
+    public static List<InetSocketAddress> parseAndValidateAddresses(AbstractConfig config) {
+        List<String> urls = config.getList(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+        String clientDnsLookupConfig = config.getString(CommonClientConfigs.CLIENT_DNS_LOOKUP_CONFIG);
+        return parseAndValidateAddresses(urls, clientDnsLookupConfig);
     }
 
     public static List<InetSocketAddress> parseAndValidateAddresses(List<String> urls, String clientDnsLookupConfig) {
@@ -133,5 +141,60 @@ public final class ClientUtils {
             }
         }
         return preferredAddresses;
+    }
+
+    public static NetworkClient createNetworkClient(Selector selector,
+                                                    Metadata metadata,
+                                                    LogContext logContext,
+                                                    ApiVersions apiVersions,
+                                                    Sensor sensor,
+                                                    Time time,
+                                                    AbstractConfig config,
+                                                    int maxInFlightRequestsPerConnection) {
+        return new NetworkClient(selector,
+                metadata,
+                config.getString(CommonClientConfigs.CLIENT_ID_CONFIG),
+                maxInFlightRequestsPerConnection,
+                config.getLong(CommonClientConfigs.RECONNECT_BACKOFF_MS_CONFIG),
+                config.getLong(CommonClientConfigs.RECONNECT_BACKOFF_MAX_MS_CONFIG),
+                config.getInt(CommonClientConfigs.SEND_BUFFER_CONFIG),
+                config.getInt(CommonClientConfigs.RECEIVE_BUFFER_CONFIG),
+                config.getInt(CommonClientConfigs.REQUEST_TIMEOUT_MS_CONFIG),
+                config.getLong(CommonClientConfigs.SOCKET_CONNECTION_SETUP_TIMEOUT_MS_CONFIG),
+                config.getLong(CommonClientConfigs.SOCKET_CONNECTION_SETUP_TIMEOUT_MAX_MS_CONFIG),
+                time,
+                true,
+                apiVersions,
+                sensor,
+                logContext);
+    }
+
+    public static NetworkClient createNetworkClient(Selector selector,
+                                                    MetadataUpdater metadataUpdater,
+                                                    LogContext logContext,
+                                                    ApiVersions apiVersions,
+                                                    Time time,
+                                                    AbstractConfig config,
+                                                    int maxInFlightRequestsPerConnection,
+                                                    int requestTimeoutMs,
+                                                    HostResolver hostResolver) {
+        return new NetworkClient(metadataUpdater,
+                null,
+                selector,
+                config.getString(CommonClientConfigs.CLIENT_ID_CONFIG),
+                maxInFlightRequestsPerConnection,
+                config.getLong(CommonClientConfigs.RECONNECT_BACKOFF_MS_CONFIG),
+                config.getLong(CommonClientConfigs.RECONNECT_BACKOFF_MAX_MS_CONFIG),
+                config.getInt(CommonClientConfigs.SEND_BUFFER_CONFIG),
+                config.getInt(CommonClientConfigs.RECEIVE_BUFFER_CONFIG),
+                requestTimeoutMs,
+                config.getLong(CommonClientConfigs.SOCKET_CONNECTION_SETUP_TIMEOUT_MS_CONFIG),
+                config.getLong(CommonClientConfigs.SOCKET_CONNECTION_SETUP_TIMEOUT_MAX_MS_CONFIG),
+                time,
+                true,
+                apiVersions,
+                null,
+                logContext,
+                hostResolver);
     }
 }

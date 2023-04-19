@@ -47,6 +47,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -328,8 +329,7 @@ public class CommitRequestManagerTest {
         props.setProperty(AUTO_COMMIT_INTERVAL_MS_CONFIG, String.valueOf(autoCommitInterval));
         props.setProperty(ENABLE_AUTO_COMMIT_CONFIG, String.valueOf(autoCommitEnabled));
         return new CommitRequestManager(
-                this.time,
-                this.logContext,
+                new PrototypeAsyncConsumerContext(this.logContext, this.time, new LinkedBlockingQueue<>(), new LinkedBlockingQueue<>()),
                 this.subscriptionState,
                 new ConsumerConfig(props),
                 this.coordinatorRequestManager,

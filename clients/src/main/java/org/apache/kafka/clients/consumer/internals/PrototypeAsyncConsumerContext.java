@@ -16,19 +16,24 @@
  */
 package org.apache.kafka.clients.consumer.internals;
 
+import org.apache.kafka.clients.consumer.internals.events.ApplicationEvent;
 import org.apache.kafka.clients.consumer.internals.events.BackgroundEvent;
-import org.apache.kafka.clients.consumer.internals.events.ErrorBackgroundEvent;
+import org.apache.kafka.common.utils.LogContext;
+import org.apache.kafka.common.utils.Time;
 
-import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
 
-public class ErrorEventHandler {
-    private final Queue<BackgroundEvent> backgroundEventQueue;
+public class PrototypeAsyncConsumerContext extends ConsumerContext {
 
-    public ErrorEventHandler(Queue<BackgroundEvent> backgroundEventQueue) {
+    public final BlockingQueue<ApplicationEvent> applicationEventQueue;
+    public final BlockingQueue<BackgroundEvent> backgroundEventQueue;
+
+    public PrototypeAsyncConsumerContext(LogContext logContext,
+                                         Time time,
+                                         BlockingQueue<ApplicationEvent> applicationEventQueue,
+                                         BlockingQueue<BackgroundEvent> backgroundEventQueue) {
+        super(logContext, time);
+        this.applicationEventQueue = applicationEventQueue;
         this.backgroundEventQueue = backgroundEventQueue;
-    }
-
-    public void handle(Throwable e) {
-        backgroundEventQueue.add(new ErrorBackgroundEvent(e));
     }
 }

@@ -18,14 +18,22 @@ package org.apache.kafka.clients.consumer.internals;
 
 import org.apache.kafka.clients.consumer.internals.NetworkClientDelegate.PollResult;
 
+import java.io.Closeable;
+
 /**
  * {@code PollResult} consist of {@code UnsentRequest} if there are requests to send; otherwise, return the time till
  * the next poll event.
  */
-public interface RequestManager {
+public interface RequestManager extends Closeable {
+
     PollResult poll(long currentTimeMs);
 
     enum Type {
-        COORDINATOR, COMMIT
+        COORDINATOR, COMMIT, FETCH
+    }
+
+    @Override
+    default void close() {
+        // Do nothing...
     }
 }
