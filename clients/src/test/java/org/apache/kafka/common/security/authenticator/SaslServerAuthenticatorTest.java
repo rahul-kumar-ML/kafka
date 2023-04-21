@@ -19,10 +19,10 @@ package org.apache.kafka.common.security.authenticator;
 import java.net.InetAddress;
 import org.apache.kafka.common.config.internals.BrokerSecurityConfigs;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
+import org.apache.kafka.common.errors.SaslAuthenticationException;
 import org.apache.kafka.common.network.ChannelMetadataRegistry;
 import org.apache.kafka.common.network.ClientInformation;
 import org.apache.kafka.common.network.DefaultChannelMetadataRegistry;
-import org.apache.kafka.common.network.InvalidReceiveException;
 import org.apache.kafka.common.network.ListenerName;
 import org.apache.kafka.common.network.TransportLayer;
 import org.apache.kafka.common.protocol.ApiKeys;
@@ -47,6 +47,7 @@ import org.mockito.Answers;
 import static org.apache.kafka.common.security.scram.internals.ScramMechanism.SCRAM_SHA_256;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -55,7 +56,7 @@ import static org.mockito.Mockito.when;
 
 public class SaslServerAuthenticatorTest {
 
-    @Test(expected = InvalidReceiveException.class)
+    @Test
     public void testOversizeRequest() throws IOException {
         TransportLayer transportLayer = mock(TransportLayer.class);
         Map<String, ?> configs = Collections.singletonMap(BrokerSecurityConfigs.SASL_ENABLED_MECHANISMS_CONFIG,
@@ -64,10 +65,10 @@ public class SaslServerAuthenticatorTest {
             SCRAM_SHA_256.mechanismName(), new DefaultChannelMetadataRegistry());
 
         when(transportLayer.read(any(ByteBuffer.class))).then(invocation -> {
-            invocation.<ByteBuffer>getArgument(0).putInt(SaslServerAuthenticator.MAX_RECEIVE_SIZE + 1);
+            invocation.<ByteBuffer>getArgument(0).putInt(BrokerSecurityConfigs.DEFAULT_SASL_SERVER_MAX_RECEIVE_SIZE + 1);
             return 4;
         });
-        authenticator.authenticate();
+        assertThrows(SaslAuthenticationException.class, authenticator::authenticate);
         verify(transportLayer).read(any(ByteBuffer.class));
     }
 

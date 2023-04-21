@@ -152,9 +152,11 @@ import org.apache.kafka.common.network.Send;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.ByteBufferAccessor;
 import org.apache.kafka.common.protocol.Errors;
+import org.apache.kafka.common.protocol.MessageUtil;
 import org.apache.kafka.common.protocol.ObjectSerializationCache;
 import org.apache.kafka.common.protocol.types.SchemaException;
 import org.apache.kafka.common.protocol.types.Struct;
+import org.apache.kafka.common.protocol.types.RawTaggedField;
 import org.apache.kafka.common.quota.ClientQuotaAlteration;
 import org.apache.kafka.common.quota.ClientQuotaEntity;
 import org.apache.kafka.common.quota.ClientQuotaFilter;
@@ -176,10 +178,12 @@ import org.apache.kafka.common.security.token.delegation.TokenInformation;
 import org.apache.kafka.common.utils.SecurityUtils;
 import org.apache.kafka.common.utils.Utils;
 import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -2432,5 +2436,94 @@ public class RequestResponseTest {
     private AlterClientQuotasResponse createAlterClientQuotasResponse() {
         ClientQuotaEntity entity = new ClientQuotaEntity(Collections.singletonMap(ClientQuotaEntity.USER, "user"));
         return new AlterClientQuotasResponse(Collections.singletonMap(entity, ApiError.NONE), 0);
+    }
+
+    @Test
+    public void testInvalidSaslHandShakeRequest() {
+        SaslHandshakeRequest request = new SaslHandshakeRequest.Builder(
+                new SaslHandshakeRequestData().setMechanism("PLAIN")).build();
+        ByteBuffer serializedBytes = MessageUtil.toByteBuffer(request.data(), ApiKeys.SASL_HANDSHAKE.latestVersion());
+        // corrupt the length of the sasl mechanism string
+        serializedBytes.putShort(0, Short.MAX_VALUE);
+
+        String msg = assertThrows(RuntimeException.class, () -> SaslHandshakeRequest.parse(serializedBytes,  ApiKeys.SASL_HANDSHAKE.latestVersion())).getMessage();
+        System.out.println(msg);
+        assertTrue(msg.contains("Error reading string of length 32767, only 5 bytes available"));
+    }
+
+    @Test
+    public void testInvalidSaslAuthenticateRequest() {
+        short version = (short) 1; // choose a version with fixed length encoding, for simplicity
+        byte[] b = new byte[] {
+            0x11, 0x1f, 0x15, 0x2c,
+            0x5e, 0x2a, 0x20, 0x26,
+            0x6c, 0x39, 0x45, 0x1f,
+            0x25, 0x1c, 0x2d, 0x25,
+            0x43, 0x2a, 0x11, 0x76
+        };
+        SaslAuthenticateRequestData data = new SaslAuthenticateRequestData().setAuthBytes(b);
+        AbstractRequest request = new SaslAuthenticateRequest(data, version);
+        ByteBuffer serializedBytes = MessageUtil.toByteBuffer(data, ApiKeys.SASL_AUTHENTICATE.latestVersion());
+
+        // corrupt the length of the bytes array
+        serializedBytes.putInt(0, Integer.MAX_VALUE);
+
+        String msg = assertThrows(RuntimeException.class, () -> new SaslAuthenticateRequestData(
+          new ByteBufferAccessor(serializedBytes), version)).getMessage();
+        assertEquals("Error reading byte array of 2147483647 byte(s): only 18 byte(s) available", msg);
+    }
+
+    @Test
+    public void testValidTaggedFieldsWithSaslAuthenticateRequest() {
+        byte[] byteArray = new byte[11];
+        ByteBufferAccessor accessor = new ByteBufferAccessor(ByteBuffer.wrap(byteArray));
+
+        //construct a SASL_AUTHENTICATE request
+        byte[] authBytes = "test".getBytes(StandardCharsets.UTF_8);
+        accessor.writeUnsignedVarint(authBytes.length + 1);
+        accessor.writeByteArray(authBytes);
+
+        //write total numbers of tags
+        accessor.writeUnsignedVarint(1);
+
+        //write first tag
+        RawTaggedField taggedField = new RawTaggedField(1, new byte[] {0x1, 0x2, 0x3});
+        accessor.writeUnsignedVarint(taggedField.tag());
+        accessor.writeUnsignedVarint(taggedField.size());
+        accessor.writeByteArray(taggedField.data());
+
+        accessor.flip();
+
+        SaslAuthenticateRequest saslAuthenticateRequest = SaslAuthenticateRequest.parse(accessor.buffer(), ApiKeys.SASL_AUTHENTICATE.latestVersion());
+        //SaslAuthenticateRequest saslAuthenticateRequest = (SaslAuthenticateRequest) AbstractRequest.
+          //      parseRequest(ApiKeys.SASL_AUTHENTICATE, ApiKeys.SASL_AUTHENTICATE.latestVersion(), saslAuthenticateRequest.toStruct());
+        Assertions.assertArrayEquals(authBytes, saslAuthenticateRequest.data().authBytes());
+        assertEquals(1, saslAuthenticateRequest.data().unknownTaggedFields().size());
+        assertEquals(taggedField, saslAuthenticateRequest.data().unknownTaggedFields().get(0));
+    }
+
+    @Test
+    public void testInvalidTaggedFieldsWithSaslAuthenticateRequest() {
+        byte[] byteArray = new byte[13];
+        ByteBufferAccessor accessor = new ByteBufferAccessor(ByteBuffer.wrap(byteArray));
+
+        //construct a SASL_AUTHENTICATE request
+        byte[] authBytes = "test".getBytes(StandardCharsets.UTF_8);
+        accessor.writeUnsignedVarint(authBytes.length + 1);
+        accessor.writeByteArray(authBytes);
+
+        //write total numbers of tags
+        accessor.writeUnsignedVarint(1);
+
+        //write first tag
+        RawTaggedField taggedField = new RawTaggedField(1, new byte[] {0x1, 0x2, 0x3});
+        accessor.writeUnsignedVarint(taggedField.tag());
+        accessor.writeUnsignedVarint(Short.MAX_VALUE); // set wrong size for tagged field
+        accessor.writeByteArray(taggedField.data());
+
+        accessor.flip();
+
+        String msg = assertThrows(RuntimeException.class, () -> SaslAuthenticateRequest.parse(accessor.buffer(), ApiKeys.SASL_AUTHENTICATE.latestVersion())).getMessage();
+        assertEquals("Error reading field '_tagged_fields': java.nio.BufferUnderflowException", msg);
     }
 }
