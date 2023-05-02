@@ -215,6 +215,11 @@
     <suppress checks="ImportControl" files="FetchResponseData.java"/>
     <suppress checks="ImportControl" files="RecordsSerdeTest.java"/>
 
+    <suppress checks="ImportControl" files="ExportMetricsServiceRequest.java"/>
+    <suppress checks="ImportControl" files="MetricsGrpcClient.java"/>
+    <suppress checks="ImportControl" files="OtlpMetricsReporter.java"/>
+    <suppress checks="ImportControl" files="MetricsGrpcClientTest.java"/>
+
     <!-- Streams tests -->
     <suppress checks="ClassFanOutComplexity"
               files="(RecordCollectorTest|StreamsPartitionAssignorTest|StreamThreadTest|StreamTaskTest|TaskManagerTest|TopologyTestDriverTest).java"/>
