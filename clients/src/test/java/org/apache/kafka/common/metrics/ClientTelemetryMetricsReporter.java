@@ -79,12 +79,12 @@ public class ClientTelemetryMetricsReporter implements MetricsReporter {
                 log.info("exportMetrics - fileName: {}", fileName);
                 File file = new File(outputDirectory, fileName);
                 log.info("exportMetrics - file: {}", file);
-                file.deleteOnExit();
+//                file.deleteOnExit();
 
                 try (FileOutputStream out = new FileOutputStream(file);
                     FileChannel channel = out.getChannel()) {
                     log.info("exportMetrics - writing payload to {}", file);
-                    Utils.writeFully(channel, payload.data());
+//                    Utils.writeFully(channel, payload.data());
                 } catch (Throwable t) {
                     log.warn(t.getMessage(), t);
                 }

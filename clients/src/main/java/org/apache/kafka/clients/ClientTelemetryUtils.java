@@ -35,6 +35,7 @@ import io.opentelemetry.proto.metrics.v1.MetricsData;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.metrics.MetricsReporter;
 import org.apache.kafka.common.telemetry.emitter.Context;
 import org.apache.kafka.common.telemetry.metrics.MetricType;
 import org.apache.kafka.clients.ClientInstanceMetricsRegistry.ConnectionErrorReason;
@@ -88,13 +89,17 @@ public class ClientTelemetryUtils {
         return create(config, logContext, time, clientId, PRODUCER_CONFIG_MAPPING);
     }
 
+    public static Optional<ClientTelemetry> create(ProducerConfig config, LogContext logContext, Time time, String clientId, MetricsReporter metricsReporter) {
+        return create(config, logContext, time, clientId, PRODUCER_CONFIG_MAPPING, metricsReporter);
+    }
+
     public static Optional<ClientTelemetry> create(AdminClientConfig config, LogContext logContext, Time time, String clientId) {
         return create(config, logContext, time, clientId, null);
     }
 
     public static Optional<ClientTelemetry> create(boolean enableMetricsPush, LogContext logContext, Time time, String clientId) {
         if (enableMetricsPush)
-            return Optional.of(new ClientTelemetry(logContext, time, clientId));
+            return Optional.of(new ClientTelemetry(logContext, time, clientId, null));
         else
             return Optional.empty();
     }
@@ -104,6 +109,15 @@ public class ClientTelemetryUtils {
         Time time,
         String clientId,
         Map<String, String> configToContextNameMapping) {
+        return create(config, logContext, time, clientId, configToContextNameMapping, null);
+    }
+
+    private static Optional<ClientTelemetry> create(AbstractConfig config,
+        LogContext logContext,
+        Time time,
+        String clientId,
+        Map<String, String> configToContextNameMapping,
+        MetricsReporter metricsReporter) {
         if (config == null) {
             log.warn("Not able to create client telemetry as config was null");
             return Optional.empty();
@@ -112,27 +126,27 @@ public class ClientTelemetryUtils {
         Boolean enableMetricsPush = config.getBoolean(CommonClientConfigs.ENABLE_METRICS_PUSH_CONFIG);
 
         if (enableMetricsPush != null && !enableMetricsPush) {
-            log.debug("Not creating client telemetry as {} was disabled", CommonClientConfigs.ENABLE_METRICS_PUSH_CONFIG);
+            log.info("Not creating client telemetry as {} was disabled", CommonClientConfigs.ENABLE_METRICS_PUSH_CONFIG);
             return Optional.empty();
         }
 
-        ClientTelemetry clientTelemetry = new ClientTelemetry(logContext, time, clientId);
+        ClientTelemetry clientTelemetry = new ClientTelemetry(logContext, time, clientId, metricsReporter);
 
-        if (configToContextNameMapping != null) {
-            Context context = clientTelemetry.context();
-
-            for (Map.Entry<String, String> e : configToContextNameMapping.entrySet()) {
-                String configName = e.getKey();
-                String contextName = e.getValue();
-
-                if (config.getString(configName) != null) {
-                    String contextValue = config.getString(configName);
-                    log.debug("Adding key/value pair to client telemetry context: {}={}",
-                        contextName, contextValue);
-                    context.put(contextName, contextValue);
-                }
-            }
-        }
+//        if (configToContextNameMapping != null) {
+//            Context context = clientTelemetry.context();
+//
+//            for (Map.Entry<String, String> e : configToContextNameMapping.entrySet()) {
+//                String configName = e.getKey();
+//                String contextName = e.getValue();
+//
+//                if (config.getString(configName) != null) {
+//                    String contextValue = config.getString(configName);
+//                    log.debug("Adding key/value pair to client telemetry context: {}={}",
+//                        contextName, contextValue);
+//                    context.put(contextName, contextValue);
+//                }
+//            }
+//        }
 
         return Optional.of(clientTelemetry);
     }
@@ -360,10 +374,10 @@ public class ClientTelemetryUtils {
         }
     }
 
-    public static MetricsData deserializeMetricsData(ByteBuffer serializedMetricsData) {
+    public static MetricsData deserializeMetricsData(byte[] serializedMetricsData) {
         try {
-            ByteBuffer metricsBuffer = (ByteBuffer) serializedMetricsData.flip();
-            return MetricsData.parseFrom(metricsBuffer);
+//            ByteBuffer metricsBuffer = (ByteBuffer) serializedMetricsData.flip();
+            return MetricsData.parseFrom(serializedMetricsData);
         } catch (IOException e) {
             throw new KafkaException("Unable to parse MetricsData payload", e);
         }

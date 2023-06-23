@@ -108,28 +108,36 @@ public class OtlpMetricsReporter implements MetricsReporter {
     @Override
     public ClientTelemetryReceiver clientReceiver() {
         return (context, payload) -> {
+            try {
+                log.info("Exporting metrics. Context: {}, payload: {}", context, payload);
 
-            if (payload == null || payload.data() == null) {
-                log.warn("exportMetrics - Client did not include payload when pushing to broker, skipping export");
-                return;
+                if (payload == null || payload.data() == null) {
+                    log.warn("exportMetrics - Client did not include payload when pushing to broker, skipping export");
+                    return;
+                }
+
+                log.info("Metrics data");
+                MetricsData metricsData = ClientTelemetryUtils.deserializeMetricsData(payload.data());
+                log.info("Metrics data: {}, count: {}", metricsData, metricsData.getResourceMetricsCount());
+                if (metricsData == null || metricsData.getResourceMetricsCount() == 0) {
+                    log.warn("exportMetrics - No metrics available, skipping export");
+                    return;
+                }
+
+                List<ResourceMetrics> metrics = metricsData.getResourceMetricsList();
+                log.info("Metrics: {}", metrics);
+                // enhance metrics with Broker-added labels
+                if (appendClientLabels) {
+                    Map<String, String> labels = getClientLabels(context, payload);
+                    metrics = enhanceMetrics(metrics, labels);
+                }
+
+                log.info("sending metrics to client");
+                grpcService.export(metrics);
+            } catch (Exception e) {
+                log.error("Error: ", e);
             }
 
-            MetricsData metricsData = ClientTelemetryUtils.deserializeMetricsData(payload.data());
-            if (metricsData == null || metricsData.getResourceMetricsCount() == 0) {
-                log.warn("exportMetrics - No metrics available, skipping export");
-                return;
-            }
-
-            List<ResourceMetrics> metrics = metricsData.getResourceMetricsList();
-
-            // enhance metrics with Broker-added labels
-            if (appendClientLabels) {
-                Map<String, String> labels = getClientLabels(context, payload);
-                metrics = enhanceMetrics(metrics, labels);
-            }
-
-            log.info("sending metrics to client");
-            grpcService.export(metrics);
         };
     }
 

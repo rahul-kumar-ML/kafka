@@ -44,5 +44,5 @@ public interface ClientTelemetryPayload {
     /**
      * Serialized uncompressed metrics data.
      */
-    ByteBuffer data();
+    byte[] data();
 }

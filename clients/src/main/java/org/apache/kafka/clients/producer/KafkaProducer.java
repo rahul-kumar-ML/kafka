@@ -379,7 +379,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     config.originalsWithPrefix(CommonClientConfigs.METRICS_CONTEXT_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time, metricsContext);
             this.producerMetrics = new KafkaProducerMetrics(metrics);
-            this.clientTelemetry = ClientTelemetryUtils.create(config, logContext, time, clientId);
+            log.info("[APM] - creating client telemetry connection. Config: {}, client id: {}", config, clientId);
+            this.clientTelemetry = ClientTelemetryUtils.create(config, logContext, time, clientId, reporters.get(0));
             this.partitioner = config.getConfiguredInstance(
                     ProducerConfig.PARTITIONER_CLASS_CONFIG,
                     Partitioner.class,
@@ -468,6 +469,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             AppInfoParser.registerAppInfo(JMX_PREFIX, clientId, metrics, time.milliseconds());
             log.debug("Kafka producer started");
         } catch (Throwable t) {
+            System.out.println("Error: " + t);
             // call close methods if internal objects are already constructed this is to prevent resource leak. see KAFKA-2121
             close(Duration.ofMillis(0), true);
             // now propagate the exception

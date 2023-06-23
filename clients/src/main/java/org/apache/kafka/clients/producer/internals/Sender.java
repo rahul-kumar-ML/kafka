@@ -889,7 +889,8 @@ public class Sender implements Runnable {
             KafkaClient client,
             Time time) {
             this.metrics = metrics;
-            this.producerTopicMetricsRegistry = clientTelemetry.map(ct -> new ProducerTopicMetricsRegistry(ct.metrics()));
+//            this.producerTopicMetricsRegistry = clientTelemetry.map(ct -> new ProducerTopicMetricsRegistry(ct.metrics()));
+            this.producerTopicMetricsRegistry = Optional.empty();
             this.time = time;
 
             this.batchSizeSensor = metrics.sensor("batch-size");

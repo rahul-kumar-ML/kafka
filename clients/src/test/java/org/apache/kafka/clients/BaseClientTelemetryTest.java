@@ -48,7 +48,7 @@ public abstract class BaseClientTelemetryTest {
     }
 
     protected ClientTelemetry newClientTelemetry(Time time, String clientId) {
-        return new ClientTelemetry(newLogContext(), time, clientId);
+        return new ClientTelemetry(newLogContext(), time, clientId, null);
     }
 
     protected ClientTelemetrySubscription newTelemetrySubscription() {

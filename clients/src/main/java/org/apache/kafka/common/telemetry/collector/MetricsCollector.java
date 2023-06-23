@@ -71,6 +71,10 @@ public interface MetricsCollector extends Closeable {
         // Do nothing...
     }
 
+    default void start() {
+        // Do nothing...
+    }
+
     /**
      * Allows for a the {@code MetricsCollector} implementation to stop itself and dispose of any
      * resources. This method should ideally be invoked only once by the telemetry manager, but
@@ -81,6 +85,10 @@ public interface MetricsCollector extends Closeable {
      * Calls to {@link #collect(Emitter)} once this method has been invoked should be expected to
      * fail by the telemetry manager; it should take caution to handle that case.
      */
+    default void stop() {
+        // Do nothing...
+    }
+
     default void close() {
         // Do nothing...
     }

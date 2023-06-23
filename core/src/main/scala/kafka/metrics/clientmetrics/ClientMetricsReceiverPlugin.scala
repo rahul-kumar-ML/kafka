@@ -32,11 +32,13 @@ object ClientMetricsReceiverPlugin {
 
   def getPayLoad(request: PushTelemetryRequest) : ClientMetricsPayload = {
      new ClientMetricsPayload(request.getClientInstanceId, request.isClientTerminating,
-       request.getMetricsContentType, request.getMetricsData)
+       request.getMetricsContentType, request.getMetricsData1)
   }
 
   def exportMetrics(context: RequestContext, request: PushTelemetryRequest): Unit = {
+    System.out.println("[APM] - export metrics")
     val payload = getPayLoad(request)
+    System.out.println("[APM] - payload: " + payload)
     cmReceivers.foreach(x => x.exportMetrics(context, payload))
   }
 

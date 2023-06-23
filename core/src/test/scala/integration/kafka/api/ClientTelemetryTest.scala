@@ -43,6 +43,7 @@ class ClientTelemetryTest extends IntegrationTestHarness {
 
   @BeforeEach
   override def setUp(testInfo: TestInfo): Unit = {
+    System.out.println("[APM] - temp dir: " + telemetryOutputDir.toString)
     this.serverConfig.setProperty(CommonClientConfigs.METRIC_REPORTER_CLASSES_CONFIG, classOf[ClientTelemetryMetricsReporter].getName)
     this.serverConfig.setProperty(ClientTelemetryMetricsReporter.OUTPUT_DIRECTORY_CONFIG, telemetryOutputDir.toString)
     super.setUp(testInfo)

@@ -48,7 +48,7 @@ public class DeserializeMetricsDataTest {
 
     @Test
     public void testDeserializeMetricsData() {
-        MetricsData deserializedMetricsData = ClientTelemetryUtils.deserializeMetricsData(metricsDataBuffer);
+        MetricsData deserializedMetricsData = ClientTelemetryUtils.deserializeMetricsData(metricsDataBuffer.array());
         InstrumentationLibraryMetrics instLib = deserializedMetricsData.getResourceMetrics(0)
                 .getInstrumentationLibraryMetrics(0);
         Metric metric = instLib.getMetrics(0);

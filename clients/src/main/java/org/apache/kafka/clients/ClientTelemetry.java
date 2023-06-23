@@ -24,14 +24,14 @@ import static org.apache.kafka.clients.ClientTelemetryUtils.validateMetricNames;
 import static org.apache.kafka.clients.ClientTelemetryUtils.validatePushIntervalMs;
 import static org.apache.kafka.common.Uuid.ZERO_UUID;
 
+import io.opentelemetry.proto.metrics.v1.MetricsData;
+import io.opentelemetry.proto.resource.v1.Resource;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -40,32 +40,24 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-
 import java.util.function.Consumer;
 import java.util.function.Predicate;
-import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.metrics.KafkaMetric;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.requests.GetTelemetrySubscriptionRequest;
-import org.apache.kafka.common.requests.PushTelemetryRequest;
-import org.apache.kafka.common.telemetry.emitter.Context;
-import org.apache.kafka.common.telemetry.collector.KafkaMetricsCollector;
-import org.apache.kafka.common.telemetry.collector.MetricsCollector;
-import org.apache.kafka.common.telemetry.metrics.Metric;
-import org.apache.kafka.common.telemetry.metrics.MetricKeyable;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.message.GetTelemetrySubscriptionsResponseData;
 import org.apache.kafka.common.message.PushTelemetryResponseData;
-import org.apache.kafka.common.metrics.KafkaMetricsContext;
-import org.apache.kafka.common.metrics.MetricConfig;
 import org.apache.kafka.common.metrics.Metrics;
-import org.apache.kafka.common.metrics.MetricsContext;
+import org.apache.kafka.common.metrics.MetricsReporter;
+import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.requests.AbstractRequest;
-import org.apache.kafka.common.telemetry.metrics.MetricKey;
-import org.apache.kafka.common.telemetry.metrics.MetricNamingStrategy;
+import org.apache.kafka.common.requests.GetTelemetrySubscriptionRequest;
+import org.apache.kafka.common.requests.PushTelemetryRequest;
+import org.apache.kafka.common.telemetry.collector.MetricsCollector;
+import org.apache.kafka.common.telemetry.metrics.Metric;
+import org.apache.kafka.common.telemetry.metrics.MetricKeyable;
+import org.apache.kafka.common.telemetry.reporter.TelemetryReporter;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
@@ -110,23 +102,7 @@ import org.slf4j.Logger;
  */
 public class ClientTelemetry implements Closeable {
 
-    static final MetricNamingStrategy<MetricName> NAMING_STRATEGY = new MetricNamingStrategy<MetricName>() {
-
-        @Override
-        public MetricKey metricKey(MetricName metricName) {
-            return new MetricKey(metricName);
-        }
-
-        @Override
-        public MetricKey derivedMetricKey(MetricKey key, String derivedComponent) {
-            return new MetricKey(key.name() + '/' + derivedComponent, key.tags());
-        }
-
-    };
-
-    static final Predicate<KafkaMetric> KAFKA_METRIC_PREDICATE = m -> m.metricName().name().startsWith("org.apache.kafka");
-
-    public final static int DEFAULT_PUSH_INTERVAL_MS = 300_000;
+    public final static int DEFAULT_PUSH_INTERVAL_MS = 30_000;
 
     public final static long MAX_TERMINAL_PUSH_WAIT_MS = 100;
 
@@ -136,19 +112,9 @@ public class ClientTelemetry implements Closeable {
 
     private final static double INITIAL_PUSH_JITTER_UPPER = 1.5;
 
-    private final static String CONTEXT = "kafka.telemetry";
-
-    private final static String CLIENT_ID_METRIC_TAG = "client-id";
-
     private final Logger log;
 
-    private final Context context;
-
     private final Time time;
-
-    private final Metrics metrics;
-
-    private final List<MetricsCollector> metricsCollectors;
 
     private final ReadWriteLock instanceStateLock = new ReentrantReadWriteLock();
 
@@ -164,80 +130,29 @@ public class ClientTelemetry implements Closeable {
 
     private long pushIntervalMs;
 
+    private final List<MetricsCollector> metricsCollectors;
+
     private final Set<ClientTelemetryListener> listeners;
 
-    public ClientTelemetry(LogContext logContext, Time time, String clientId) {
+    private Resource resource;
+
+    public ClientTelemetry(LogContext logContext, Time time, String clientId, MetricsReporter metricsReporter) {
         this.log = logContext.logger(ClientTelemetry.class);
         this.time = Objects.requireNonNull(time, "time cannot be null");
-        clientId = Objects.requireNonNull(clientId, "clientId cannot be null");
-
-        KafkaMetricsCollector kafkaMetricsCollector = new KafkaMetricsCollector(time, NAMING_STRATEGY, KAFKA_METRIC_PREDICATE);
-
-        this.context = new Context();
         this.listeners = new HashSet<>();
-        this.metricsCollectors = new ArrayList<>();
-        metricsCollectors.add(new HostProcessInfoMetricsCollector(time));
-        metricsCollectors.add(kafkaMetricsCollector);
 
-        for (MetricsCollector mc : metricsCollectors)
-            mc.init();
+        if (metricsReporter != null) {
+            this.metricsCollectors = ((TelemetryReporter) metricsReporter).getCollectors();
+            this.resource = ((TelemetryReporter) metricsReporter).resource();
+        } else {
+            this.metricsCollectors = null;
+            this.resource = null;
+        }
 
-        Map<String, String> metricsTags = Collections.singletonMap(CLIENT_ID_METRIC_TAG, clientId);
-        MetricConfig metricConfig = new MetricConfig()
-            .tags(metricsTags);
-        MetricsContext metricsContext = new KafkaMetricsContext(CONTEXT);
-
-        this.metrics = new Metrics(metricConfig,
-            Collections.singletonList(kafkaMetricsCollector),
-            time,
-            metricsContext);
     }
 
     public Metrics metrics() {
-        return metrics;
-    }
-
-    public Context context() {
-        return context;
-    }
-
-    public void addListener(ClientTelemetryListener listener) {
-        try {
-            instanceStateLock.writeLock().lock();
-            this.listeners.add(listener);
-        } finally {
-            instanceStateLock.writeLock().unlock();
-        }
-    }
-
-    public void removeListener(ClientTelemetryListener listener) {
-        try {
-            instanceStateLock.writeLock().lock();
-            this.listeners.remove(listener);
-        } finally {
-            instanceStateLock.writeLock().unlock();
-        }
-    }
-
-    private void invokeListeners(Consumer<ClientTelemetryListener> c) {
-        List<ClientTelemetryListener> l;
-
-        try {
-            instanceStateLock.readLock().lock();
-            l = new ArrayList<>(listeners);
-        } finally {
-            instanceStateLock.readLock().unlock();
-        }
-
-        if (!l.isEmpty()) {
-            for (ClientTelemetryListener listener : l) {
-                try {
-                    c.accept(listener);
-                } catch (Throwable t) {
-                    log.warn(t.getMessage(), t);
-                }
-            }
-        }
+        return null;
     }
 
     public void initiateClose(Duration timeout) {
@@ -281,6 +196,45 @@ public class ClientTelemetry implements Closeable {
         }
     }
 
+    public void addListener(ClientTelemetryListener listener) {
+        try {
+            instanceStateLock.writeLock().lock();
+            this.listeners.add(listener);
+        } finally {
+            instanceStateLock.writeLock().unlock();
+        }
+    }
+
+    public void removeListener(ClientTelemetryListener listener) {
+        try {
+            instanceStateLock.writeLock().lock();
+            this.listeners.remove(listener);
+        } finally {
+            instanceStateLock.writeLock().unlock();
+        }
+    }
+
+    private void invokeListeners(Consumer<ClientTelemetryListener> c) {
+        List<ClientTelemetryListener> l;
+
+        try {
+            instanceStateLock.readLock().lock();
+            l = new ArrayList<>(listeners);
+        } finally {
+            instanceStateLock.readLock().unlock();
+        }
+
+        if (!l.isEmpty()) {
+            for (ClientTelemetryListener listener : l) {
+                try {
+                    c.accept(listener);
+                } catch (Throwable t) {
+                    log.warn(t.getMessage(), t);
+                }
+            }
+        }
+    }
+
     @Override
     public void close() {
         log.trace("close");
@@ -301,8 +255,6 @@ public class ClientTelemetry implements Closeable {
         }
 
         if (shouldClose) {
-            metrics.close();
-
             for (MetricsCollector mc : metricsCollectors)
                 mc.close();
         }
@@ -513,7 +465,7 @@ public class ClientTelemetry implements Closeable {
         }
 
         // This is the success case...
-        log.debug("Successfully retrieved telemetry subscription; response: {}", data);
+        log.info("Successfully retrieved telemetry subscription; response: {}", data);
         List<String> requestedMetrics = data.requestedMetrics();
         Predicate<? super MetricKeyable> selector = validateMetricNames(requestedMetrics);
         List<CompressionType> acceptedCompressionTypes = validateAcceptedCompressionTypes(data.acceptedCompressionTypes());
@@ -528,7 +480,7 @@ public class ClientTelemetry implements Closeable {
             data.deltaTemporality(),
             selector);
 
-        log.debug("Successfully retrieved telemetry subscription: {}", clientTelemetrySubscription);
+        log.info("Successfully retrieved telemetry subscription: {}", clientTelemetrySubscription);
 
         try {
             instanceStateLock.writeLock().lock();
@@ -630,9 +582,9 @@ public class ClientTelemetry implements Closeable {
         double rand = r.nextDouble(INITIAL_PUSH_JITTER_LOWER, INITIAL_PUSH_JITTER_UPPER);
         int firstPushIntervalMs = (int) Math.round(rand * pushIntervalMs);
 
-        if (log.isDebugEnabled()) {
+        if (log.isInfoEnabled()) {
             String randFmt = String.format("%.0f", ((double) firstPushIntervalMs * (double) 100) / (double) pushIntervalMs);
-            log.debug("Telemetry subscription push interval value from broker was {}; to stagger requests the first push interval is being adjusted to {} ({}% of {})",
+            log.info("Telemetry subscription push interval value from broker was {}; to stagger requests the first push interval is being adjusted to {} ({}% of {})",
                 pushIntervalMs, firstPushIntervalMs, randFmt, pushIntervalMs);
         }
 
@@ -702,6 +654,7 @@ public class ClientTelemetry implements Closeable {
     }
 
     public Optional<AbstractRequest.Builder<?>> createRequest() {
+        log.info("[APM] - create request - telemetry");
         ClientTelemetryState localState;
         ClientTelemetrySubscription localSubscription;
 
@@ -714,6 +667,7 @@ public class ClientTelemetry implements Closeable {
         }
 
         if (localState == ClientTelemetryState.subscription_needed) {
+            log.info("[APM] - subscription needed");
             Uuid clientInstanceId;
 
             // If we've previously retrieved a subscription, it will contain the client instance ID
@@ -737,12 +691,13 @@ public class ClientTelemetry implements Closeable {
             }
 
             AbstractRequest.Builder<?> requestBuilder = new GetTelemetrySubscriptionRequest.Builder(clientInstanceId);
-            log.debug("createRequest - created new {} network API request", requestBuilder.apiKey().name);
+            log.info("[APM] - createRequest - created new subscription {} network API request", requestBuilder.apiKey().name);
             invokeListeners(l -> l.getSubscriptionRequestCreated(clientInstanceId));
             return Optional.of(requestBuilder);
         } else if (localState == ClientTelemetryState.push_needed || localState == ClientTelemetryState.terminating_push_needed) {
+            log.info("[APM] - telemetry push");
             if (localSubscription == null) {
-                log.warn("Telemetry state is {} but subscription is null; not sending telemetry", state);
+                log.warn("[APM] - Telemetry state is {} but subscription is null; not sending telemetry", state);
                 return Optional.empty();
             }
 
@@ -755,13 +710,25 @@ public class ClientTelemetry implements Closeable {
                 for (MetricsCollector mc : metricsCollectors)
                     mc.collect(emitter);
 
-                payload = emitter.payload(context.tags());
+                payload = emitter.payload(resource);
                 emitted = emitter.emitted();
             }
 
             CompressionType compressionType = preferredCompressionType(localSubscription.acceptedCompressionTypes());
+            log.info("Compression type: {}", compressionType);
+            compressionType = CompressionType.NONE;
+            log.info("Changed compression type: {}", compressionType);
             ByteBuffer buf = serialize(payload, compressionType);
             Bytes metricsData =  Bytes.wrap(Utils.readBytes(buf));
+
+            try {
+//                ByteBuffer buf1 = ByteBuffer.wrap(metricsData.get());
+                MetricsData metricsData1 = ClientTelemetryUtils.deserializeMetricsData(metricsData.get());
+                log.info("Successful, data: {}", metricsData1.getResourceMetricsCount());
+            } catch (Exception e) {
+                log.error("Error: ", e);
+            }
+
 
             boolean terminating;
 
@@ -789,16 +756,17 @@ public class ClientTelemetry implements Closeable {
                 compressionType,
                 metricsData);
 
-            log.debug("createRequest - created new {} network API request", requestBuilder.apiKey().name);
+            log.info("[APM] - createRequest - created new telemetry {} network API request", requestBuilder.apiKey().name);
 
+            final CompressionType finalCompressionType = compressionType;
             invokeListeners(l -> l.pushRequestCreated(localSubscription.clientInstanceId(),
                 localSubscription.subscriptionId(),
                 terminating,
-                compressionType,
+                finalCompressionType,
                 emitted));
             return Optional.of(requestBuilder);
         } else {
-            log.warn("Cannot make telemetry request as telemetry is in state: {}", localState);
+            log.warn("[APM] - Cannot make telemetry request as telemetry is in state: {}", localState);
             return Optional.empty();
         }
     }

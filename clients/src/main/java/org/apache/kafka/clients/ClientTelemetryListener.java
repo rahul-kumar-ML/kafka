@@ -21,6 +21,8 @@ import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.telemetry.metrics.Metric;
 
+// Might be just a hook for tests and we might not require in actual code. Figure out if tit can be
+// removed.
 public interface ClientTelemetryListener {
 
     void getSubscriptionRequestCreated(Uuid clientInstanceId);

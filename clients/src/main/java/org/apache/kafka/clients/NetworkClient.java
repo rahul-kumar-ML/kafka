@@ -17,6 +17,7 @@
 package org.apache.kafka.clients;
 
 import static org.apache.kafka.clients.ClientTelemetryUtils.convertToConnectionErrorReason;
+import static org.apache.kafka.common.protocol.ApiKeys.PUSH_TELEMETRY;
 
 import org.apache.kafka.clients.ClientInstanceMetricsRegistry.ConnectionErrorReason;
 import org.apache.kafka.clients.ClientInstanceMetricsRegistry.RequestErrorReason;
@@ -28,6 +29,7 @@ import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.DisconnectException;
 import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.apache.kafka.common.message.ApiVersionsResponseData.ApiVersion;
+import org.apache.kafka.common.message.PushTelemetryRequestData;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.network.ChannelState;
 import org.apache.kafka.common.network.NetworkSend;
@@ -294,8 +296,10 @@ public class NetworkClient implements KafkaClient {
         this.throttleTimeSensor = throttleTimeSensor;
         this.log = logContext.logger(NetworkClient.class);
         this.state = new AtomicReference<>(State.ACTIVE);
-        this.clientInstanceMetricsRegistry = clientTelemetry.map(ct -> new ClientInstanceMetricsRegistry(ct.metrics()));
+//        this.clientInstanceMetricsRegistry = clientTelemetry.map(ct -> new ClientInstanceMetricsRegistry(ct.metrics()));
+        this.clientInstanceMetricsRegistry = Optional.empty();
         this.clientTelemetryUpdater = clientTelemetry.map(ClientTelemetryUpdater::new);
+//        this.clientTelemetryUpdater = Optional.empty();
     }
 
     /**
@@ -548,6 +552,13 @@ public class NetworkClient implements KafkaClient {
             log.debug("Sending {} request with header {} and timeout {} to node {}: {}",
                 clientRequest.apiKey(), header, clientRequest.requestTimeoutMs(), destination, request);
         }
+
+        if (clientRequest.apiKey() == PUSH_TELEMETRY) {
+            log.info("[APM] - Sending {} request with header {} and timeout {} to node {}: {}, metrics size: {}",
+                clientRequest.apiKey(), header, clientRequest.requestTimeoutMs(), destination, request,
+                ((PushTelemetryRequestData) request.data()).metrics().length);
+        }
+
         Send send = request.toSend(header);
         InFlightRequest inFlightRequest = new InFlightRequest(
                 clientRequest,
@@ -585,6 +596,7 @@ public class NetworkClient implements KafkaClient {
 
         long metadataTimeout = metadataUpdater.maybeUpdate(now);
         long telemetryTimeout = clientTelemetryUpdater.isPresent() ? clientTelemetryUpdater.get().maybeUpdate(now) : Integer.MAX_VALUE;
+        log.debug("[APM] - telemetry timeout: {}", telemetryTimeout);
         try {
             this.selector.poll(Utils.min(timeout, metadataTimeout, telemetryTimeout, defaultRequestTimeoutMs));
         } catch (IOException e) {
@@ -1312,6 +1324,7 @@ public class NetworkClient implements KafkaClient {
             String nodeConnectionId = node.idString();
 
             if (canSendRequest(nodeConnectionId, now)) {
+                log.debug("[APM] - create request");
                 Optional<AbstractRequest.Builder<?>> requestOpt = clientTelemetry.createRequest();
 
                 if (!requestOpt.isPresent())
@@ -1322,6 +1335,7 @@ public class NetworkClient implements KafkaClient {
                 doSend(clientRequest, true, now);
                 return defaultRequestTimeoutMs;
             } else {
+                log.debug("[APM] - clear stick node");
                 // Per KIP-714, if we can't issue a request to this broker node, let's clear it out
                 // and try another broker on the next loop.
                 stickyNode = null;
@@ -1350,14 +1364,17 @@ public class NetworkClient implements KafkaClient {
         }
 
         public void handleFailedRequest(ApiKeys apiKey, Optional<KafkaException> maybeFatalException) {
+            log.info("[APM] - handleFailedRequest");
             clientTelemetry.handleFailedRequest(apiKey, maybeFatalException);
         }
 
         public void handleResponse(GetTelemetrySubscriptionResponse response) {
+            log.info("[APM] - handleResponse - GetTelemetrySubscriptionResponse: {}", response);
             clientTelemetry.handleResponse(response.data());
         }
 
         public void handleResponse(PushTelemetryResponse response) {
+            log.info("[APM] - handleResponse - PushTelemetryResponse: {}", response);
             clientTelemetry.handleResponse(response.data());
         }
 

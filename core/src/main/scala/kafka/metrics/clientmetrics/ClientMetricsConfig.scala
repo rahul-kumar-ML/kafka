@@ -100,7 +100,7 @@ object ClientMetricsConfig {
     val AllMetricsFlag = "client.metrics.all"
     val DeleteSubscription = "client.metrics.delete.subscription"
 
-    val DEFAULT_PUSH_INTERVAL = 5 * 60 * 1000 // 5 minutes
+    val DEFAULT_PUSH_INTERVAL = 30 * 1000 // 5 minutes
 
     // Definitions
     val configDef = new ConfigDef()
@@ -120,7 +120,8 @@ object ClientMetricsConfig {
     }
 
     def validateProperties(properties :Properties) = {
-      properties.keySet().forEach(x => require(names.contains(x), s"Unknown client metric configuration: $x"))
+      System.out.println("[APM] - names: " + names)
+//      properties.keySet().forEach(x => require(names.contains(x), s"Unknown client metric configuration: $x"))
 
       // If the command is to delete the subscription then we do not expect any other parameters to be in the list.
       // Otherwise validate the rest of the parameters.

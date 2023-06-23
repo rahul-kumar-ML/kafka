@@ -19,6 +19,7 @@ package org.apache.kafka.clients;
 import io.opentelemetry.proto.common.v1.AnyValue;
 import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.metrics.v1.AggregationTemporality;
+import io.opentelemetry.proto.metrics.v1.Gauge;
 import io.opentelemetry.proto.metrics.v1.InstrumentationLibraryMetrics;
 import io.opentelemetry.proto.metrics.v1.MetricsData;
 import io.opentelemetry.proto.metrics.v1.NumberDataPoint;
@@ -36,6 +37,7 @@ import org.apache.kafka.common.telemetry.metrics.MetricKeyable;
 import org.apache.kafka.common.telemetry.metrics.MetricKey;
 import org.apache.kafka.common.telemetry.metrics.Metric;
 import org.apache.kafka.common.telemetry.emitter.Emitter;
+import org.apache.kafka.common.telemetry.metrics.MetricType;
 
 public class ClientTelemetryEmitter implements Emitter {
 
@@ -50,7 +52,9 @@ public class ClientTelemetryEmitter implements Emitter {
 
     @Override
     public boolean shouldEmitMetric(MetricKeyable metricKeyable) {
-        return selector.test(metricKeyable);
+        System.out.println("[APM] - metricKeyable: " + metricKeyable.key());
+        return true;
+//        return selector.test(metricKeyable);
     }
 
     @Override
@@ -63,23 +67,28 @@ public class ClientTelemetryEmitter implements Emitter {
         return Collections.unmodifiableList(emitted);
     }
 
-    public byte[] payload(Map<String, String> context) {
-        Resource resource = resource(context);
-
+    public byte[] payload(Resource resource) {
         MetricsData.Builder builder = MetricsData.newBuilder();
+        try {
+            emitted.forEach(tm -> {
+                if (tm.metricType() != MetricType.sum && tm.metricType() != MetricType.gauge) {
+                    return;
+                }
 
-        emitted.forEach(tm -> {
-            io.opentelemetry.proto.metrics.v1.Metric m = convert(tm);
-            ResourceMetrics rm = ResourceMetrics.newBuilder()
-                .setResource(resource)
-                .addInstrumentationLibraryMetrics(
-                    InstrumentationLibraryMetrics.newBuilder()
-                        .addMetrics(m)
-                        .build()
-                ).build();
+                io.opentelemetry.proto.metrics.v1.Metric m = convert(tm);
+                ResourceMetrics rm = ResourceMetrics.newBuilder()
+                    .setResource(resource)
+                    .addInstrumentationLibraryMetrics(
+                        InstrumentationLibraryMetrics.newBuilder()
+                            .addMetrics(m)
+                            .build()
+                    ).build();
 
-            builder.addResourceMetrics(rm);
-        });
+                builder.addResourceMetrics(rm);
+            });
+        } catch (Exception e) {
+            System.out.println("Error: " + e.getCause());
+        }
 
         return builder.build().toByteArray();
     }

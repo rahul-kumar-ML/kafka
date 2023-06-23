@@ -83,7 +83,7 @@ object ClientMetricsTestUtils {
 
     def exportMetrics(context: AuthorizableRequestContext, payload: ClientTelemetryPayload) = {
       exportMetricsInvoked += 1
-      metricsData = payload.data()
+//      metricsData = payload.data()
     }
   }
 

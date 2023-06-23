@@ -111,9 +111,18 @@ public class PushTelemetryRequest extends AbstractRequest {
 
     public ByteBuffer getMetricsData() throws Exception {
         CompressionType cType = CompressionType.forId(this.data.compressionType());
+        System.out.println("[APM] Compressions type: " + cType + " length: " + this.data.metrics().length);
         ByteBuffer metricsData = (cType == CompressionType.NONE) ?
                 ByteBuffer.wrap(this.data.metrics()) : decompressMetricsData(cType, this.data.metrics());
         return metricsData.asReadOnlyBuffer();
+    }
+
+    public byte[] getMetricsData1() throws Exception {
+//        CompressionType cType = CompressionType.forId(this.data.compressionType());
+//        System.out.println("[APM] Compressions type: " + cType + " length: " + this.data.metrics().length);
+//        ByteBuffer metricsData = (cType == CompressionType.NONE) ?
+//            ByteBuffer.wrap(this.data.metrics()) : decompressMetricsData(cType, this.data.metrics());
+        return this.data.metrics();
     }
 
     public static ByteBuffer decompressMetricsData(CompressionType compressionType, byte[] metrics) throws Exception {

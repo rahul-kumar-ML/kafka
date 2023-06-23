@@ -26,9 +26,9 @@ public class ClientMetricsPayload implements ClientTelemetryPayload {
     final private Uuid clientInstanceId;
     final private boolean isClientTerminating;
     final private String metricsContentType;
-    final private ByteBuffer metricsData;
+    final private byte[] metricsData;
 
-    ClientMetricsPayload(Uuid clientId, boolean terminating, String contentType, ByteBuffer data) {
+    ClientMetricsPayload(Uuid clientId, boolean terminating, String contentType, byte[] data) {
         this.clientInstanceId = clientId;
         this.isClientTerminating = terminating;
         this.metricsContentType = contentType;
@@ -51,7 +51,7 @@ public class ClientMetricsPayload implements ClientTelemetryPayload {
     }
 
     @Override
-    public ByteBuffer data() {
+    public byte[] data() {
         return metricsData;
     }
 }

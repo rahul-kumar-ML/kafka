@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.common.telemetry.emitter;
 
+import io.opentelemetry.proto.resource.v1.Resource;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,16 +38,30 @@ public class Context {
 
     public static final String TRANSACTIONAL_ID = "transactional_id";
 
+    private final Resource resource;
+
+    private final String domain;
+
     private final Map<String, String> tags;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public Context() {
         this.tags = new HashMap<>();
+        this.resource = null;
+        this.domain = null;
     }
 
     public Context(Map<String, String> tags) {
         this.tags = new HashMap<>(tags);
+        this.resource = null;
+        this.domain = null;
+    }
+
+    public Context(Resource resource, String domain) {
+        this.resource = resource;
+        this.domain = domain;
+        this.tags = new HashMap<>();
     }
 
     public String put(String key, String value) {
@@ -89,5 +104,15 @@ public class Context {
             lock.readLock().unlock();
         }
     }
+
+    public Resource getResource() {
+        return resource;
+    }
+
+    public String getDomain() {
+        return this.domain;
+    }
+
+
 
 }

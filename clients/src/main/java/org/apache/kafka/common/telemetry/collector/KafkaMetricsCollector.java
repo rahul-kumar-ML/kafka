@@ -192,6 +192,7 @@ public class KafkaMetricsCollector extends AbstractMetricsCollector implements M
 
     @Override
     public void collect(Emitter emitter) {
+        log.info("[APM] - collect metrics, ledger: {}", ledger.getMetrics());
         for (Map.Entry<MetricKey, KafkaMetric> entry : ledger.getMetrics()) {
             MetricKey metricKey = entry.getKey();
             KafkaMetric metric = entry.getValue();
@@ -206,6 +207,7 @@ public class KafkaMetricsCollector extends AbstractMetricsCollector implements M
     }
 
     protected void collectMetric(Emitter emitter, MetricKey metricKey, KafkaMetric metric) {
+        log.info("[APM] - collect metric: {}", metricKey);
         Object metricValue;
 
         try {

@@ -45,7 +45,7 @@ class MetricsGrpcClient implements AutoCloseable {
 
         @Override
         public void onError(Throwable t) {
-            log.debug("Unable to export metrics request to {}. gRPC Connectivity in: {}:  {}",
+            log.error("Unable to export metrics request to {}. gRPC Connectivity in: {}:  {}",
                     endpoint, getChannelState(), t.getCause());
         }
 

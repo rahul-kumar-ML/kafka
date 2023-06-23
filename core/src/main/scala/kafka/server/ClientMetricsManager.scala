@@ -57,9 +57,11 @@ object ClientMetricsManager {
   def processPushTelemetryRequest(request: RequestChannel.Request, throttleMs: Int): PushTelemetryResponse = {
     val pushTelemetryRequest = request.body[PushTelemetryRequest]
     if (ClientMetricsReceiverPlugin.isEmpty) {
+      System.out.println("[APM] - ClientMetricsReceiverPlugin is empty")
       pushTelemetryRequest.getErrorResponse(throttleMs, new ClientMetricsReceiverPluginNotFoundException("Broker does not have any configured client metrics receiver plugin"))
     } else {
       val clientInfo = CmClientInformation(request, pushTelemetryRequest.getClientInstanceId.toString)
+      System.out.println("[APM] - client info: " + clientInfo)
       _instance.processPushTelemetryRequest(pushTelemetryRequest, request.context, clientInfo, throttleMs)
     }
   }
@@ -136,6 +138,7 @@ class ClientMetricsManager {
       case _ => pushTelemetryRequest.getClientInstanceId
     }
 
+    System.out.println("[APM] - client instance id: " + clientInstanceId)
     val clientInstance = getClientInstance(clientInstanceId).getOrElse(createClientInstance(clientInstanceId, clientInfo))
 
     // Once client set the state to Terminating do not accept any further requests.
@@ -174,12 +177,14 @@ class ClientMetricsManager {
                                   throttleMs: Int): PushTelemetryResponse = {
 
     def createResponse(errors: Option[Errors]) : PushTelemetryResponse = {
+      System.out.println("[APM] - create response")
       var adjustedThrottleMs = throttleMs
       val clientInstance = getClientInstance(pushTelemetryRequest.getClientInstanceId)
 
       // Before sending the response make sure to update the book keeping markers like
       // lastAccessTime, isTerminating flag etc..
       if (!clientInstance.isEmpty) {
+        System.out.println("[APM] - clientInstance is empty")
         adjustedThrottleMs = Math.max(clientInstance.get.getAdjustedPushInterval(), throttleMs)
         clientInstance.get.updateLastAccessTs(getCurrentTime)
 
@@ -194,17 +199,21 @@ class ClientMetricsManager {
 
     var errorCode = Errors.NONE
     try {
+      System.out.println("[APM] - validate")
       // Validate the push request parameters
       validatePushRequest(pushTelemetryRequest, clientInfo)
 
+      System.out.println("[APM] - metrics")
       // Push the metrics to the external client receiver plugin.
       val metrics = Option(pushTelemetryRequest.data().metrics())
       if (!metrics.get.isEmpty) {
+        System.out.println("[APM] - export")
         ClientMetricsReceiverPlugin.exportMetrics(requestContext, pushTelemetryRequest)
       }
     } catch {
       case e: ClientMetricsException => {
         warn("PushTelemetry request raised an exception: " + e.getMessage)
+        System.out.println("[APM] Error: " + e.getMessage)
         errorCode = e.getErrorCode
       }
     }

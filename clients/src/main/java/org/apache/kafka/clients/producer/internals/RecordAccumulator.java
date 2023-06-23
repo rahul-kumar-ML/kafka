@@ -149,8 +149,10 @@ public class RecordAccumulator {
         nodesDrainIndex = new HashMap<>();
         this.transactionManager = transactionManager;
         this.clientTelemetry = clientTelemetry;
-        this.producerMetricsRegistry = clientTelemetry.map(ct -> new ProducerMetricsRegistry(ct.metrics()));
-        this.producerTopicMetricsRegistry = clientTelemetry.map(ct -> new ProducerTopicMetricsRegistry(ct.metrics()));
+//        this.producerMetricsRegistry = clientTelemetry.map(ct -> new ProducerMetricsRegistry(ct.metrics()));
+//        this.producerTopicMetricsRegistry = clientTelemetry.map(ct -> new ProducerTopicMetricsRegistry(ct.metrics()));
+        this.producerMetricsRegistry = Optional.empty();
+        this.producerTopicMetricsRegistry = Optional.empty();
         registerMetrics(metrics, metricGrpName);
     }
 

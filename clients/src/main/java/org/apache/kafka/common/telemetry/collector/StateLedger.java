@@ -65,7 +65,7 @@ public class StateLedger {
     }
 
     public void init(List<KafkaMetric> metrics) {
-        log.debug("initializing Kafka metrics");
+        log.info("initializing Kafka metrics");
         for (KafkaMetric m : metrics) {
             metricMap.put(metricNamingStrategy.metricKey(m.metricName()), m);
         }
@@ -92,7 +92,7 @@ public class StateLedger {
 
     public void metricRemoval(KafkaMetric metric) {
         MetricKey metricKey = metricNamingStrategy.metricKey(metric.metricName());
-        log.debug("removing kafka metric : {}", metricKey);
+        log.info("removing kafka metric : {}", metricKey);
         metricMap.remove(metricKey);
         doubleDeltas.remove(metricKey);
         metricAdded.remove(metricKey);

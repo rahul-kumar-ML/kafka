@@ -203,6 +203,8 @@ object ClientMetrics extends Logging {
         val alterOptions = new AlterConfigsOptions().timeoutMs(ADMIN_CLIENT_TIMEOUT).validateOnly(false)
         val configsToBeAdded = addMetricsOpts.getAddedConfig
         val alterEntries = (configsToBeAdded.map( e => new AlterConfigOp(new ConfigEntry(e._1, e._2), AlterConfigOp.OpType.SET))).asJavaCollection
+
+        System.out.println("[APM] - alter entries: {}", alterEntries)
         adminClient.incrementalAlterConfigs(
           Map(configResource -> alterEntries).asJava,
           alterOptions).all().get(60, TimeUnit.SECONDS)
@@ -256,8 +258,8 @@ object ClientMetrics extends Logging {
      var props: Map[String, String] = Map()
 
       if(name.isDefined) props += ("name" -> name.get)
-      if(metrics.isDefined) props += ("metrics" -> metrics.get.toString)
-      if(intervalMs.isDefined) props += ("interval" -> intervalMs.get.toString)
+      if(metrics.isDefined) props += ("client.metrics.subscription.metrics" -> metrics.get.toString)
+      if(intervalMs.isDefined) props += ("client.metrics.push.interval.ms" -> intervalMs.get.toString)
       if(isBlocked) props += ("block" -> isBlocked.toString)
       props
     }
