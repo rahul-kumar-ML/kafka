@@ -16,6 +16,8 @@
  */
 package org.apache.kafka.common.network;
 
+import com.yammer.metrics.core.Histogram;
+import com.yammer.metrics.reporting.JmxReporter.HistogramMBean;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.errors.AuthenticationException;
@@ -23,6 +25,7 @@ import org.apache.kafka.common.memory.MemoryPool;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.metrics.internals.IntGaugeSuite;
+import org.apache.kafka.common.metrics.metrics.KafkaYammerMetrics;
 import org.apache.kafka.common.metrics.stats.Avg;
 import org.apache.kafka.common.metrics.stats.CumulativeSum;
 import org.apache.kafka.common.metrics.stats.Max;
@@ -490,6 +493,7 @@ public class Selector implements Selectable, AutoCloseable {
 
         long endIo = time.nanoseconds();
         this.sensors.ioTime.record(endIo - endSelect, time.milliseconds());
+        this.sensors.histogram.update(Math.round(endIo - endSelect));
 
         // Close channels that were delayed and are now ready to be closed
         completeDelayedChannelClose(endIo);
@@ -1134,6 +1138,7 @@ public class Selector implements Selectable, AutoCloseable {
         public final Sensor responsesReceived;
         public final Sensor selectTime;
         public final Sensor ioTime;
+        public final Histogram histogram;
         public final IntGaugeSuite<CipherInformation> connectionsByCipher;
         public final IntGaugeSuite<ClientInformation> connectionsByClient;
 
@@ -1252,6 +1257,11 @@ public class Selector implements Selectable, AutoCloseable {
                     return metrics.metricName("connections", metricGrpName, "The number of connections with this client and version.", tags);
                 }, 100);
 
+            Class klass = this.getClass();
+//            String simpleName = klass.getSimpleName().replaceAll("\\$$", "");
+            com.yammer.metrics.core.MetricName name = new com.yammer.metrics.core.MetricName(klass, "io-time-yammer-histo");
+            this.histogram = KafkaYammerMetrics.defaultRegistry().newHistogram(name, true);
+
             metricName = metrics.metricName("connection-count", metricGrpName, "The current number of active connections.", metricTags);
             topLevelMetricNames.add(metricName);
             this.metrics.addMetric(metricName, (config, now) -> channels.size());
@@ -1276,7 +1286,7 @@ public class Selector implements Selectable, AutoCloseable {
 
         /**
          * This method generates `time-total` metrics but has a couple of deficiencies: no `-ns` suffix and no dash between basename
-         * and `time-toal` suffix.
+         * and `time-total` suffix.
          * @deprecated use {{@link #createIOThreadRatioMeter(Metrics, String, Map, String, String)}} for new metrics instead
          */
         @Deprecated

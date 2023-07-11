@@ -2318,7 +2318,8 @@ public class KafkaProducerTest {
                 interceptors,
                 partitioner,
                 time,
-                ioThread
+                ioThread,
+                null
             );
         }
     }

@@ -38,10 +38,12 @@ import org.apache.kafka.common.metrics.stats.Meter;
 import org.apache.kafka.common.metrics.stats.Min;
 import org.apache.kafka.common.metrics.stats.Percentiles;
 import org.apache.kafka.common.metrics.stats.Rate;
+import org.apache.kafka.common.metrics.stats.SampledStat;
 import org.apache.kafka.common.metrics.stats.SimpleRate;
 import org.apache.kafka.common.metrics.stats.WindowedCount;
 import org.apache.kafka.common.telemetry.emitter.Emitter;
 import org.apache.kafka.common.telemetry.metrics.MetricKey;
+import org.apache.kafka.common.telemetry.metrics.MetricKeyable;
 import org.apache.kafka.common.telemetry.metrics.MetricNamingStrategy;
 import org.apache.kafka.common.telemetry.metrics.MetricType;
 import org.apache.kafka.common.telemetry.metrics.Metric;
@@ -223,10 +225,19 @@ public class KafkaMetricsCollector extends AbstractMetricsCollector implements M
             double value = (Double) metricValue;
 
             if (measurable instanceof WindowedCount || measurable instanceof CumulativeSum) {
+                log.info("[APM] - collect delta metric: {}", metricKey);
                 maybeEmitDouble(emitter, metricKey, MetricType.sum, value);
                 maybeEmitDelta(emitter, metricKey, value);
             } else {
-                maybeEmitDouble(emitter, metricKey, MetricType.sum, value);
+                maybeEmitDouble(emitter, metricKey, MetricType.gauge, value);
+            }
+
+            if (isSampledStat(metric)) {
+                // Emit additional histogram metric
+                log.info("[APM] - collect histogram metric: {}", metricKey);
+                MetricKey histogramMetricKey = new MetricKey(metricKey.name() + "-histo", metricKey.tags());
+                Map.Entry<Double, Long> sumAndCount = metric.getRawSumAndCount();
+                maybeEmitHistogram(emitter, histogramMetricKey, MetricType.histogram, sumAndCount.getKey(), sumAndCount.getValue());
             }
         } else if (metricValue instanceof Number) {
             // For non-measurable Gauge metrics, collect the metric only if its value is a number.
@@ -262,6 +273,15 @@ public class KafkaMetricsCollector extends AbstractMetricsCollector implements M
         return emitter.emitMetric(metric);
     }
 
+    protected boolean maybeEmitHistogram(Emitter emitter, MetricKeyable metricKeyable, MetricType metricType, double value, long count) {
+        if (!emitter.shouldEmitMetric(metricKeyable))
+            return false;
+
+        Instant timestamp = now();
+        Metric metric = new Metric(metricKeyable, metricType, value, count, timestamp, null, false);
+        return emitter.emitMetric(metric);
+    }
+
     private static boolean isMeasurable(KafkaMetric metric) {
         // KafkaMetric does not expose the internal MetricValueProvider and throws an IllegalStateException exception
         // if .measurable() is called for a Gauge.
@@ -272,6 +292,15 @@ public class KafkaMetricsCollector extends AbstractMetricsCollector implements M
         try {
             Object provider = METRIC_VALUE_PROVIDER_FIELD.get(metric);
             return provider instanceof Measurable;
+        } catch (Exception e) {
+            throw new KafkaException(e);
+        }
+    }
+
+    private static boolean isSampledStat(KafkaMetric metric) {
+        try {
+            Object provider = METRIC_VALUE_PROVIDER_FIELD.get(metric);
+            return provider instanceof SampledStat;
         } catch (Exception e) {
             throw new KafkaException(e);
         }

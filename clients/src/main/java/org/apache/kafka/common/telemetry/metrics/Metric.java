@@ -27,6 +27,8 @@ public class Metric implements MetricKeyable {
 
     private final Number value;
 
+    private final long count;
+
     private final Instant timestamp;
 
     private final Instant startTimestamp;
@@ -43,9 +45,20 @@ public class Metric implements MetricKeyable {
         Instant timestamp,
         Instant startTimestamp,
         boolean deltaTemporality) {
+        this(metricKeyable, metricType, value, 0, timestamp, startTimestamp, deltaTemporality);
+    }
+
+    public Metric(MetricKeyable metricKeyable,
+        MetricType metricType,
+        Number value,
+        long count,
+        Instant timestamp,
+        Instant startTimestamp,
+        boolean deltaTemporality) {
         this.metricKeyable = metricKeyable;
         this.metricType = metricType;
         this.value = value;
+        this.count = count;
         this.timestamp = timestamp;
         this.startTimestamp = startTimestamp;
         this.deltaTemporality = deltaTemporality;
@@ -62,6 +75,10 @@ public class Metric implements MetricKeyable {
 
     public Number value() {
         return value;
+    }
+
+    public long getCount() {
+        return count;
     }
 
     public Instant timestamp() {
@@ -82,6 +99,7 @@ public class Metric implements MetricKeyable {
             .add("metricKeyable=" + metricKeyable)
             .add("metricType=" + metricType)
             .add("value=" + value)
+            .add("count=" + count)
             .add("timestamp=" + timestamp)
             .add("startTimestamp=" + startTimestamp)
             .add("deltaTemporality=" + deltaTemporality)

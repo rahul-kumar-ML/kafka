@@ -20,6 +20,7 @@ import io.opentelemetry.proto.common.v1.AnyValue;
 import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.metrics.v1.AggregationTemporality;
 import io.opentelemetry.proto.metrics.v1.Gauge;
+import io.opentelemetry.proto.metrics.v1.HistogramDataPoint;
 import io.opentelemetry.proto.metrics.v1.InstrumentationLibraryMetrics;
 import io.opentelemetry.proto.metrics.v1.MetricsData;
 import io.opentelemetry.proto.metrics.v1.NumberDataPoint;
@@ -71,7 +72,8 @@ public class ClientTelemetryEmitter implements Emitter {
         MetricsData.Builder builder = MetricsData.newBuilder();
         try {
             emitted.forEach(tm -> {
-                if (tm.metricType() != MetricType.sum && tm.metricType() != MetricType.gauge) {
+                if (tm.metricType() != MetricType.sum && tm.metricType() != MetricType.gauge &&
+                tm.metricType() != MetricType.histogram) {
                     return;
                 }
 
@@ -131,6 +133,13 @@ public class ClientTelemetryEmitter implements Emitter {
                 }
 
                 return sum(metricKey, at, point);
+            case histogram:
+                HistogramDataPoint.Builder histogramDataPoint = HistogramDataPoint.newBuilder()
+                    .setTimeUnixNano(toTimeUnixNanos(timestamp))
+//                    .setStartTimeUnixNano(toTimeUnixNanos(startTimestamp))
+                    .setSum((double) metric.value())
+                    .setCount(metric.getCount());
+                return histogram(metricKey, histogramDataPoint);
 
             default:
                 throw new InvalidMetricTypeException(String.format("The metric %s (%s) was of unexpected type ", metric.key(), metric.metricType()));
@@ -173,6 +182,18 @@ public class ClientTelemetryEmitter implements Emitter {
             .getSumBuilder()
             .setAggregationTemporality(aggregationTemporalityDelta)
             .addDataPoints(point);
+
+        return metric.build();
+    }
+
+    public static io.opentelemetry.proto.metrics.v1.Metric histogram(MetricKey metricKey, HistogramDataPoint.Builder point) {
+        point.addAllAttributes(asAttributes(metricKey.tags()));
+        io.opentelemetry.proto.metrics.v1.Metric.Builder metric = io.opentelemetry.proto.metrics.v1.Metric.newBuilder()
+            .setName(metricKey.name());
+
+        metric.getHistogramBuilder()
+            .addDataPoints(point)
+            .setAggregationTemporality(AggregationTemporality.AGGREGATION_TEMPORALITY_CUMULATIVE);
 
         return metric.build();
     }

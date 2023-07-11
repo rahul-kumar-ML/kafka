@@ -16,8 +16,13 @@
  */
 package org.apache.kafka.common.metrics;
 
+import java.util.AbstractMap;
+import java.util.AbstractMap.SimpleEntry;
+import java.util.Map;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
+import org.apache.kafka.common.metrics.stats.Avg;
+import org.apache.kafka.common.metrics.stats.SampledStat;
 import org.apache.kafka.common.utils.Time;
 
 public final class KafkaMetric implements Metric {
@@ -59,6 +64,17 @@ public final class KafkaMetric implements Metric {
                 return ((Gauge<?>) metricValueProvider).value(config, now);
             else
                 throw new IllegalStateException("Not a valid metric: " + this.metricValueProvider.getClass());
+        }
+    }
+
+    public Map.Entry<Double, Long> getRawSumAndCount() {
+        long now = time.milliseconds();
+        synchronized (this.lock) {
+            if (this.metricValueProvider instanceof SampledStat)
+                return new SimpleEntry<>(((SampledStat) metricValueProvider).getSampleSum(config, now),
+                    ((SampledStat) metricValueProvider).getSampleCount(config, now));
+            else
+                throw new IllegalStateException("Not a valid metric 1: " + this.metricValueProvider.getClass());
         }
     }
 

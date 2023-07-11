@@ -554,8 +554,8 @@ public class NetworkClient implements KafkaClient {
         }
 
         if (clientRequest.apiKey() == PUSH_TELEMETRY) {
-            log.info("[APM] - Sending {} request with header {} and timeout {} to node {}: {}, metrics size: {}",
-                clientRequest.apiKey(), header, clientRequest.requestTimeoutMs(), destination, request,
+            log.info("[APM] - Sending {} request with header {} and timeout {} to node {}, metrics size: {}",
+                clientRequest.apiKey(), header, clientRequest.requestTimeoutMs(), destination,
                 ((PushTelemetryRequestData) request.data()).metrics().length);
         }
 

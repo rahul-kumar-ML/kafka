@@ -1301,6 +1301,7 @@ project(':clients') {
     implementation libs.lz4
     implementation libs.snappy
     implementation libs.slf4jApi
+    implementation libs.metrics
 
     // shadow implementation for KIP-714
     shadow libs.opentelemetryProto

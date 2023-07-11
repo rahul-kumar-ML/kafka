@@ -75,6 +75,24 @@ public abstract class SampledStat implements MeasurableStat {
         return combine(this.samples, config, now);
     }
 
+    public double getSampleSum(MetricConfig config, long now) {
+        purgeObsoleteSamples(config, now);
+        double total = 0.0;
+        for (Sample s : this.samples) {
+            total += s.value;
+        }
+        return total;
+    }
+
+    public long getSampleCount(MetricConfig config, long now) {
+        purgeObsoleteSamples(config, now);
+        long count = 0;
+        for (Sample s : this.samples) {
+            count += s.eventCount;
+        }
+        return count;
+    }
+
     public Sample current(long timeMs) {
         if (samples.size() == 0)
             this.samples.add(newSample(timeMs));

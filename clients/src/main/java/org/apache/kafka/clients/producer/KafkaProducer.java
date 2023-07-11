@@ -64,6 +64,7 @@ import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.MetricsContext;
 import org.apache.kafka.common.metrics.MetricsReporter;
 import org.apache.kafka.common.metrics.Sensor;
+import org.apache.kafka.common.metrics.metrics.KafkaYammerMetrics;
 import org.apache.kafka.common.network.ChannelBuilder;
 import org.apache.kafka.common.network.Selector;
 import org.apache.kafka.common.record.AbstractRecords;
@@ -261,6 +262,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final ProducerInterceptors<K, V> interceptors;
     private final ApiVersions apiVersions;
     private final TransactionManager transactionManager;
+    private final KafkaYammerMetrics kafkaYammerMetrics;
 
     private final Optional<ClientTelemetry> clientTelemetry;
 
@@ -377,6 +379,9 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             reporters.add(jmxReporter);
             MetricsContext metricsContext = new KafkaMetricsContext(JMX_PREFIX,
                     config.originalsWithPrefix(CommonClientConfigs.METRICS_CONTEXT_PREFIX));
+
+            this.kafkaYammerMetrics = KafkaYammerMetrics.INSTANCE;
+            this.kafkaYammerMetrics.configure(config.originals());
             this.metrics = new Metrics(metricConfig, reporters, time, metricsContext);
             this.producerMetrics = new KafkaProducerMetrics(metrics);
             log.info("[APM] - creating client telemetry connection. Config: {}, client id: {}", config, clientId);
@@ -490,7 +495,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                   ProducerInterceptors<K, V> interceptors,
                   Partitioner partitioner,
                   Time time,
-                  KafkaThread ioThread) {
+                  KafkaThread ioThread,
+                  KafkaYammerMetrics kafkaYammerMetrics) {
         this.producerConfig = config;
         this.time = time;
         this.clientId = config.getString(ProducerConfig.CLIENT_ID_CONFIG);
@@ -514,6 +520,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         this.metadata = metadata;
         this.sender = sender;
         this.ioThread = ioThread;
+        this.kafkaYammerMetrics = kafkaYammerMetrics;
     }
 
     // visible for testing
