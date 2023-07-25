@@ -143,7 +143,7 @@ def job = {
         }
     ]
 
-    r\esult = parallel testTargets
+    result = parallel testTargets
     // combine results of the two targets into one result string
     return result.runTestsStepName + "\n" + result.downstreamBuildsStepName
 }
