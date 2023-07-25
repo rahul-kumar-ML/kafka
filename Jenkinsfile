@@ -19,7 +19,7 @@
 
 def config = jobConfig {
     cron = '@weekly'
-    nodeLabel = 'docker-oraclejdk8'
+    nodeLabel = 'docker-debian-jdk8'
     testResultSpecs = ['junit': '**/build/test-results/**/TEST-*.xml']
     slackChannel = '#kafka-warn'
     timeoutHours = 4
@@ -143,7 +143,7 @@ def job = {
         }
     ]
 
-    result = parallel testTargets
+    r\esult = parallel testTargets
     // combine results of the two targets into one result string
     return result.runTestsStepName + "\n" + result.downstreamBuildsStepName
 }
