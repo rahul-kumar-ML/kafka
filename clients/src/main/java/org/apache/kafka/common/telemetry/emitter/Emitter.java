@@ -20,6 +20,7 @@ import java.io.Closeable;
 import org.apache.kafka.common.telemetry.metrics.MetricKey;
 import org.apache.kafka.common.telemetry.metrics.MetricKeyable;
 import org.apache.kafka.common.telemetry.metrics.Metric;
+import org.apache.kafka.common.telemetry.metrics.SinglePointMetric;
 
 /**
  * An {@code Emitter} emits the values held by the {@link Metric}, likely first converting them
@@ -61,6 +62,8 @@ public interface Emitter extends Closeable {
      */
 
     boolean emitMetric(Metric metric);
+
+    boolean emitMetric(SinglePointMetric metric);
 
     /**
      * Allows for a the {@code Emitter} implementation to initialize itself. This

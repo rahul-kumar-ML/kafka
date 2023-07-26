@@ -8,6 +8,7 @@ import static org.apache.kafka.common.telemetry.provider.Utils.notEmptyString;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import io.opentelemetry.proto.resource.v1.Resource;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -15,9 +16,11 @@ import java.util.Map;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.HostProcessInfoMetricsCollector;
 import org.apache.kafka.common.metrics.MetricsContext;
+import org.apache.kafka.common.metrics.metrics.KafkaYammerMetrics;
 import org.apache.kafka.common.telemetry.ConfluentTelemetryConfig;
 import org.apache.kafka.common.telemetry.ResourceBuilderFacade;
 import org.apache.kafka.common.telemetry.collector.MetricsCollector;
+import org.apache.kafka.common.telemetry.collector.YammerMetricsCollector;
 import org.apache.kafka.common.telemetry.emitter.Context;
 import org.apache.kafka.common.utils.Time;
 
@@ -119,7 +122,15 @@ public class KafkaClientProvider implements Provider {
 
   @Override
   public List<MetricsCollector> extraCollectors(Context ctx) {
-    return ImmutableList.of(new HostProcessInfoMetricsCollector(Time.SYSTEM));
+    List<MetricsCollector> collectors = new ArrayList<>();
+
+    collectors.add(new HostProcessInfoMetricsCollector(Time.SYSTEM));
+
+    collectors.add(YammerMetricsCollector.newBuilder()
+        .setMetricNamingStrategy(NAMING_STRATEGY)
+        .setMetricsRegistry(KafkaYammerMetrics.defaultRegistry())
+        .build());
+    return collectors;
   }
 
   @Override

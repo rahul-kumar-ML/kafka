@@ -31,6 +31,7 @@ import java.util.function.Supplier;
 import org.apache.kafka.common.Reconfigurable;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.metrics.JmxReporter;
+import org.apache.kafka.common.telemetry.reporter.TelemetryReporter;
 import org.apache.kafka.common.utils.Exit;
 import org.apache.kafka.common.utils.Sanitizer;
 
@@ -54,6 +55,7 @@ public class KafkaYammerMetrics implements Reconfigurable {
     private final MetricsRegistry metricsRegistry = new MetricsRegistry();
     private final FilteringJmxReporter jmxReporter = new FilteringJmxReporter(metricsRegistry,
         metricName -> true);
+//    private final TelemetryReporter telemetryReporter = new TelemetryReporter();
 
     private KafkaYammerMetrics() {
         jmxReporter.start();
@@ -79,6 +81,7 @@ public class KafkaYammerMetrics implements Reconfigurable {
     public void reconfigure(Map<String, ?> configs) {
         Predicate<String> mBeanPredicate = JmxReporter.compilePredicate(configs);
         jmxReporter.updatePredicate(metricName -> mBeanPredicate.test(metricName.getMBeanName()));
+//        telemetryReporter.reconfigure(configs);
     }
 
     public static MetricName getMetricName(

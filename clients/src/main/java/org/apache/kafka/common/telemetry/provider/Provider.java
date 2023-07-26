@@ -2,21 +2,56 @@
 
 package org.apache.kafka.common.telemetry.provider;
 
+import com.google.common.base.Strings;
+import com.yammer.metrics.core.MetricName;
 import io.opentelemetry.proto.resource.v1.Resource;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 import org.apache.kafka.common.Configurable;
 import org.apache.kafka.common.metrics.MetricsContext;
+import org.apache.kafka.common.metrics.metrics.KafkaYammerMetrics;
 import org.apache.kafka.common.telemetry.collector.MetricsCollector;
+import org.apache.kafka.common.telemetry.collector.YammerMetricsCollector;
 import org.apache.kafka.common.telemetry.emitter.Context;
+import org.apache.kafka.common.telemetry.metrics.MetricKey;
+import org.apache.kafka.common.telemetry.metrics.MetricNamingStrategy;
 
 /**
  * Implement this interface to collect metrics for your component. You will need to register your
  * implementation in {@link ProviderRegistry}.
  */
 public interface Provider extends Configurable {
+
+  String NAME_JOINER = "/";
+
+  MetricNamingStrategy<com.yammer.metrics.core.MetricName> NAMING_STRATEGY = new MetricNamingStrategy<com.yammer.metrics.core.MetricName>() {
+
+    @Override
+    public MetricKey metricKey(com.yammer.metrics.core.MetricName metricName) {
+//      String name = fullMetricName("test", metricName.getType(), metricName.getName());
+      String mbeanName = Strings.nullToEmpty(metricName.getMBeanName());
+      Map<String, String> labels = new HashMap<>();
+      return new MetricKey(metricName.getName(), labels);
+    }
+
+    @Override
+    public MetricKey derivedMetricKey(MetricKey key, String derivedComponent) {
+      return new MetricKey(key.name() + NAME_JOINER + derivedComponent, key.tags());
+    }
+
+  };
+
+  static String fullMetricName(String domain, String group, String name) {
+    return domain
+        + NAME_JOINER
+        + group
+        + NAME_JOINER
+        + name;
+  }
 
   Predicate<String> EXCLUDE_ALL = k -> false;
 

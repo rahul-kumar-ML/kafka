@@ -19,7 +19,6 @@ package org.apache.kafka.clients;
 import io.opentelemetry.proto.common.v1.AnyValue;
 import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.metrics.v1.AggregationTemporality;
-import io.opentelemetry.proto.metrics.v1.Gauge;
 import io.opentelemetry.proto.metrics.v1.HistogramDataPoint;
 import io.opentelemetry.proto.metrics.v1.InstrumentationLibraryMetrics;
 import io.opentelemetry.proto.metrics.v1.MetricsData;
@@ -33,12 +32,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
-import org.apache.kafka.common.telemetry.metrics.InvalidMetricTypeException;
-import org.apache.kafka.common.telemetry.metrics.MetricKeyable;
-import org.apache.kafka.common.telemetry.metrics.MetricKey;
-import org.apache.kafka.common.telemetry.metrics.Metric;
 import org.apache.kafka.common.telemetry.emitter.Emitter;
+import org.apache.kafka.common.telemetry.metrics.InvalidMetricTypeException;
+import org.apache.kafka.common.telemetry.metrics.Metric;
+import org.apache.kafka.common.telemetry.metrics.MetricKey;
+import org.apache.kafka.common.telemetry.metrics.MetricKeyable;
 import org.apache.kafka.common.telemetry.metrics.MetricType;
+import org.apache.kafka.common.telemetry.metrics.SinglePointMetric;
 
 public class ClientTelemetryEmitter implements Emitter {
 
@@ -46,9 +46,12 @@ public class ClientTelemetryEmitter implements Emitter {
 
     private final List<Metric> emitted;
 
+    private final List<SinglePointMetric> yammerEmitted;
+
     public ClientTelemetryEmitter(Predicate<? super MetricKeyable> selector) {
         this.selector = selector;
         this.emitted = new ArrayList<>();
+        this.yammerEmitted = new ArrayList<>();
     }
 
     @Override
@@ -61,6 +64,12 @@ public class ClientTelemetryEmitter implements Emitter {
     @Override
     public boolean emitMetric(Metric metric) {
         emitted.add(metric);
+        return true;
+    }
+
+    @Override
+    public boolean emitMetric(SinglePointMetric metric) {
+        yammerEmitted.add(metric);
         return true;
     }
 
@@ -84,8 +93,24 @@ public class ClientTelemetryEmitter implements Emitter {
                         InstrumentationLibraryMetrics.newBuilder()
                             .addMetrics(m)
                             .build()
+//                    .addScopeMetrics(
+//                        ScopeMetrics.newBuilder()
+//                            .addMetrics(m)
+//                            .build()
                     ).build();
 
+                builder.addResourceMetrics(rm);
+            });
+
+            yammerEmitted.forEach(tm -> {
+                io.opentelemetry.proto.metrics.v1.Metric m = tm.metric().build();
+                ResourceMetrics rm = ResourceMetrics.newBuilder()
+                    .setResource(resource)
+                    .addInstrumentationLibraryMetrics(
+                        InstrumentationLibraryMetrics.newBuilder()
+                            .addMetrics(m)
+                            .build()
+                    ).build();
                 builder.addResourceMetrics(rm);
             });
         } catch (Exception e) {

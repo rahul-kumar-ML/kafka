@@ -1258,8 +1258,8 @@ public class Selector implements Selectable, AutoCloseable {
                 }, 100);
 
             Class klass = this.getClass();
-//            String simpleName = klass.getSimpleName().replaceAll("\\$$", "");
-            com.yammer.metrics.core.MetricName name = new com.yammer.metrics.core.MetricName(klass, "io-time-yammer-histo");
+            String simpleName = klass.getSimpleName().replaceAll("\\$$", "");
+            com.yammer.metrics.core.MetricName name = new com.yammer.metrics.core.MetricName(metricGrpName, simpleName, "io-time-yammer-histo");
             this.histogram = KafkaYammerMetrics.defaultRegistry().newHistogram(name, true);
 
             metricName = metrics.metricName("connection-count", metricGrpName, "The current number of active connections.", metricTags);

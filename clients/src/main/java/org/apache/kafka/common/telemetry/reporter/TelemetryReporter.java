@@ -43,7 +43,7 @@ import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class TelemetryReporter implements MetricsReporter, ClusterResourceListener {
+public class TelemetryReporter implements MetricsReporter {
 
   static final MetricNamingStrategy<MetricName> NAMING_STRATEGY = new MetricNamingStrategy<MetricName>() {
 
@@ -309,11 +309,6 @@ public class TelemetryReporter implements MetricsReporter, ClusterResourceListen
     if (selfMetrics != null) {
       selfMetrics.close();
     }
-  }
-
-  @Override
-  public synchronized void onUpdate(ClusterResource clusterResource) {
-    // NOOP. The cluster id is part of metrics context.
   }
 
   @Override

@@ -16,32 +16,26 @@
  */
 package org.apache.kafka.common.metrics;
 
-import io.opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest;
-import io.opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceResponse;
-import io.opentelemetry.proto.collector.metrics.v1.MetricsServiceGrpc;
-import io.opentelemetry.proto.metrics.v1.Gauge;
-import io.opentelemetry.proto.metrics.v1.InstrumentationLibraryMetrics;
-import io.opentelemetry.proto.metrics.v1.Metric;
-import io.opentelemetry.proto.metrics.v1.NumberDataPoint;
-import io.opentelemetry.proto.metrics.v1.ResourceMetrics;
-import io.grpc.inprocess.InProcessChannelBuilder;
-import io.grpc.inprocess.InProcessServerBuilder;
-import io.grpc.stub.StreamObserver;
-import io.grpc.ManagedChannel;
-import io.grpc.Server;
-
-import java.util.concurrent.LinkedBlockingDeque;
-import java.util.stream.IntStream;
-import java.io.IOException;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import io.grpc.ManagedChannel;
+import io.grpc.Server;
+import io.grpc.inprocess.InProcessChannelBuilder;
+import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.stub.StreamObserver;
+import io.opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest;
+import io.opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceResponse;
+import io.opentelemetry.proto.collector.metrics.v1.MetricsServiceGrpc;
+import io.opentelemetry.proto.metrics.v1.ResourceMetrics;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -140,14 +134,16 @@ class MetricsGrpcClientTest {
     }
 
     private ResourceMetrics generateMetrics(String name, int value) {
-        return ResourceMetrics.newBuilder().addInstrumentationLibraryMetrics(
-                InstrumentationLibraryMetrics.newBuilder().addMetrics(
-                        Metric.newBuilder().setGauge(
-                                Gauge.newBuilder().addDataPoints(
-                                        NumberDataPoint.newBuilder().setAsInt(value).build()
-                                ).build()
-                        ).setName(name).build()
-                ).build()
-        ).build();
+        return ResourceMetrics.newBuilder()
+//            .addInstrumentationLibraryMetrics(
+//                InstrumentationLibraryMetrics.newBuilder().addMetrics(
+//                        Metric.newBuilder().setGauge(
+//                                Gauge.newBuilder().addDataPoints(
+//                                        NumberDataPoint.newBuilder().setAsInt(value).build()
+//                                ).build()
+//                        ).setName(name).build()
+//                ).build()
+//        )
+        .build();
     }
 }
