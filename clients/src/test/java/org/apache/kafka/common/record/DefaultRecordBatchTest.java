@@ -504,7 +504,7 @@ public class DefaultRecordBatchTest {
     }
 
     @ParameterizedTest
-    @MethodSource
+    @MethodSource("args")
     public void testZstdJniForSkipKeyValueIterator(int expectedJniCalls, byte[] recordValue) throws IOException {
         MemoryRecords records = MemoryRecords.withRecords(RecordBatch.MAGIC_VALUE_V2, 0L,
             CompressionType.ZSTD, TimestampType.CREATE_TIME,
@@ -541,7 +541,7 @@ public class DefaultRecordBatchTest {
         }
     }
 
-    private static Stream<Arguments> testZstdJniForSkipKeyValueIterator() throws NoSuchAlgorithmException {
+    private static Stream<Arguments> args() throws NoSuchAlgorithmException {
         byte[] smallRecordValue = "1".getBytes();
         byte[] largeRecordValue = new byte[40 * 1024]; // 40KB
         RANDOM.nextBytes(largeRecordValue);
