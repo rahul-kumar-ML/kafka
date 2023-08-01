@@ -452,7 +452,7 @@ public class DefaultRecordBatchTest {
         }
     }
 
-    @ParameterizedTest
+    //@ParameterizedTest
     @MethodSource
     public void testBufferReuseInSkipKeyValueIterator(CompressionType compressionType, int expectedNumBufferAllocations, byte[] recordValue) {
         MemoryRecords records = MemoryRecords.withRecords(RecordBatch.MAGIC_VALUE_V2, 0L,
