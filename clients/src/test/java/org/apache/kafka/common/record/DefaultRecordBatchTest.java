@@ -403,9 +403,9 @@ public class DefaultRecordBatchTest {
         }
     }
 
-    //@ParameterizedTest
+    @ParameterizedTest
     @EnumSource(value = CompressionType.class)
-    public void testSkipKeyValueIteratorCorrectness(CompressionType compressionType) throws NoSuchAlgorithmException {
+    public void testSkipKeyValueIteratorCorrectness(CompressionType compressionType) {
         Header[] headers = {new RecordHeader("k1", "v1".getBytes()), new RecordHeader("k2", null)};
         byte[] largeRecordValue = new byte[200 * 1024]; // 200KB
         RANDOM.nextBytes(largeRecordValue);
@@ -452,7 +452,7 @@ public class DefaultRecordBatchTest {
         }
     }
 
-    //@ParameterizedTest
+    @ParameterizedTest
     @MethodSource
     public void testBufferReuseInSkipKeyValueIterator(CompressionType compressionType, int expectedNumBufferAllocations, byte[] recordValue) {
         MemoryRecords records = MemoryRecords.withRecords(RecordBatch.MAGIC_VALUE_V2, 0L,
@@ -477,7 +477,7 @@ public class DefaultRecordBatchTest {
             verify(bufferSupplier, times(expectedNumBufferAllocations)).release(any(ByteBuffer.class));
         }
     }
-    private static Stream<Arguments> testBufferReuseInSkipKeyValueIterator() throws NoSuchAlgorithmException {
+    private static Stream<Arguments> testBufferReuseInSkipKeyValueIterator() {
         byte[] smallRecordValue = "1".getBytes();
         byte[] largeRecordValue = new byte[512 * 1024]; // 512KB
         RANDOM.nextBytes(largeRecordValue);
@@ -503,7 +503,7 @@ public class DefaultRecordBatchTest {
         );
     }
 
-    //@ParameterizedTest
+    @ParameterizedTest
     @MethodSource
     public void testZstdJniForSkipKeyValueIterator(int expectedJniCalls, byte[] recordValue) throws IOException {
         MemoryRecords records = MemoryRecords.withRecords(RecordBatch.MAGIC_VALUE_V2, 0L,
@@ -541,7 +541,7 @@ public class DefaultRecordBatchTest {
         }
     }
 
-    private static Stream<Arguments> testZstdJniForSkipKeyValueIterator() throws NoSuchAlgorithmException {
+    private static Stream<Arguments> testZstdJniForSkipKeyValueIterator() {
         byte[] smallRecordValue = "1".getBytes();
         byte[] largeRecordValue = new byte[40 * 1024]; // 40KB
         RANDOM.nextBytes(largeRecordValue);
