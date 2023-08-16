@@ -23,6 +23,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kafka.cluster.EndPoint
 import kafka.log.{LogCleaner, LogManager}
+import kafka.metrics.clientmetrics.ClientMetricsReceiverPlugin
 import kafka.network.{DataPlaneAcceptor, SocketServer}
 import kafka.server.DynamicBrokerConfig._
 import kafka.server.KafkaRaftServer.BrokerRole
@@ -911,6 +912,10 @@ class DynamicMetricReporterState(brokerId: Int, config: KafkaConfig, metrics: Me
     reporters.forEach { reporter =>
       metrics.addReporter(reporter)
       currentReporters += reporter.getClass.getName -> reporter
+      val cmReceiver = reporter.clientReceiver()
+      if (cmReceiver != null) {
+        ClientMetricsReceiverPlugin.add(cmReceiver)
+      }
     }
     KafkaBroker.notifyClusterListeners(clusterId, reporters.asScala)
   }

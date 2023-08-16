@@ -31,7 +31,7 @@ public interface ClientTelemetry {
    * Called by the client to create a ClientTelemetrySender instance.
    * This instance may be cached by the client.
    *
-   * @return
+   * @return ClientTelemetrySender
    */
   ClientTelemetrySender clientSender();
 
@@ -43,7 +43,7 @@ public interface ClientTelemetry {
    * {@link MetricsReporter#contextChange(MetricsContext)}
    * on the MetricsReporter implementing this interface.
    *
-   * @return
+   * @return ClientTelemetryReceiver
    */
   ClientTelemetryReceiver clientReceiver();
 }

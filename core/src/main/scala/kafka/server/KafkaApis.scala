@@ -240,6 +240,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.ALLOCATE_PRODUCER_IDS => handleAllocateProducerIdsRequest(request)
         case ApiKeys.DESCRIBE_QUORUM => forwardToControllerOrFail(request)
         case ApiKeys.CONSUMER_GROUP_HEARTBEAT => handleConsumerGroupHeartbeat(request).exceptionally(handleError)
+        case ApiKeys.GET_TELEMETRY_SUBSCRIPTIONS => handleGetTelemetrySubscriptionRequest(request)
+        case ApiKeys.PUSH_TELEMETRY => handlePushTelemetryRequest(request)
         case _ => throw new IllegalStateException(s"No handler for request api key ${request.header.apiKey}")
       }
     } catch {
@@ -2400,24 +2402,24 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleAddPartitionsToTxnRequest(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
     ensureInterBrokerVersion(IBP_0_11_0_IV0)
     val addPartitionsToTxnRequest =
-      if (request.context.apiVersion() < 4) 
-        request.body[AddPartitionsToTxnRequest].normalizeRequest() 
-      else 
+      if (request.context.apiVersion() < 4)
+        request.body[AddPartitionsToTxnRequest].normalizeRequest()
+      else
         request.body[AddPartitionsToTxnRequest]
     val version = addPartitionsToTxnRequest.version
     val responses = new AddPartitionsToTxnResultCollection()
     val partitionsByTransaction = addPartitionsToTxnRequest.partitionsByTransaction()
-    
+
     // Newer versions of the request should only come from other brokers.
     if (version >= 4) authHelper.authorizeClusterOperation(request, CLUSTER_ACTION)
 
-    // V4 requests introduced batches of transactions. We need all transactions to be handled before sending the 
+    // V4 requests introduced batches of transactions. We need all transactions to be handled before sending the
     // response so there are a few differences in handling errors and sending responses.
     def createResponse(requestThrottleMs: Int): AbstractResponse = {
       if (version < 4) {
         // There will only be one response in data. Add it to the response data object.
         val data = new AddPartitionsToTxnResponseData()
-        responses.forEach { result => 
+        responses.forEach { result =>
           data.setResultsByTopicV3AndBelow(result.topicResults())
           data.setThrottleTimeMs(requestThrottleMs)
         }
@@ -2438,7 +2440,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     }
 
-    txns.forEach { transaction => 
+    txns.forEach { transaction =>
       val transactionalId = transaction.transactionalId
 
       if (transactionalId == null)
@@ -2455,10 +2457,10 @@ class KafkaApis(val requestChannel: RequestChannel,
         val authorizedPartitions = mutable.Set[TopicPartition]()
 
         // Only request versions less than 4 need write authorization since they come from clients.
-        val authorizedTopics = 
-          if (version < 4) 
-            authHelper.filterByAuthorized(request.context, WRITE, TOPIC, partitionsToAdd.filterNot(tp => Topic.isInternal(tp.topic)))(_.topic) 
-          else 
+        val authorizedTopics =
+          if (version < 4)
+            authHelper.filterByAuthorized(request.context, WRITE, TOPIC, partitionsToAdd.filterNot(tp => Topic.isInternal(tp.topic)))(_.topic)
+          else
             partitionsToAdd.map(_.topic).toSet
         for (topicPartition <- partitionsToAdd) {
           if (!authorizedTopics.contains(topicPartition.topic))
@@ -2748,6 +2750,8 @@ class KafkaApis(val requestChannel: RequestChannel,
           throw new InvalidRequestException(s"AlterConfigs is deprecated and does not support the resource type ${ConfigResource.Type.BROKER_LOGGER}")
         case ConfigResource.Type.BROKER =>
           authHelper.authorize(originalRequest.context, ALTER_CONFIGS, CLUSTER, CLUSTER_NAME)
+        case ConfigResource.Type.CLIENT_METRICS =>
+          authHelper.authorize(originalRequest.context, ALTER_CONFIGS, CLIENT_METRICS, resource.name)
         case ConfigResource.Type.TOPIC =>
           authHelper.authorize(originalRequest.context, ALTER_CONFIGS, TOPIC, resource.name)
         case rt => throw new InvalidRequestException(s"Unexpected resource type $rt")
@@ -2912,6 +2916,8 @@ class KafkaApis(val requestChannel: RequestChannel,
           authHelper.authorize(originalRequest.context, ALTER_CONFIGS, CLUSTER, CLUSTER_NAME)
         case ConfigResource.Type.TOPIC =>
           authHelper.authorize(originalRequest.context, ALTER_CONFIGS, TOPIC, resource.name)
+        case ConfigResource.Type.CLIENT_METRICS =>
+          authHelper.authorize(originalRequest.context, ALTER_CONFIGS, CLIENT_METRICS, resource.name)
         case rt => throw new InvalidRequestException(s"Unexpected resource type $rt")
       }
     }
@@ -2931,13 +2937,15 @@ class KafkaApis(val requestChannel: RequestChannel,
           authHelper.authorize(request.context, DESCRIBE_CONFIGS, CLUSTER, CLUSTER_NAME)
         case ConfigResource.Type.TOPIC =>
           authHelper.authorize(request.context, DESCRIBE_CONFIGS, TOPIC, resource.resourceName)
+        case ConfigResource.Type.CLIENT_METRICS =>
+          authHelper.authorize(request.context, DESCRIBE_CONFIGS, CLIENT_METRICS, resource.resourceName)
         case rt => throw new InvalidRequestException(s"Unexpected resource type $rt for resource ${resource.resourceName}")
       }
     }
     val authorizedConfigs = configHelper.describeConfigs(authorizedResources.toList, describeConfigsRequest.data.includeSynonyms, describeConfigsRequest.data.includeDocumentation)
     val unauthorizedConfigs = unauthorizedResources.map { resource =>
       val error = ConfigResource.Type.forId(resource.resourceType) match {
-        case ConfigResource.Type.BROKER | ConfigResource.Type.BROKER_LOGGER => Errors.CLUSTER_AUTHORIZATION_FAILED
+        case ConfigResource.Type.BROKER | ConfigResource.Type.BROKER_LOGGER | ConfigResource.Type.CLIENT_METRICS => Errors.CLUSTER_AUTHORIZATION_FAILED
         case ConfigResource.Type.TOPIC => Errors.TOPIC_AUTHORIZATION_FAILED
         case rt => throw new InvalidRequestException(s"Unexpected resource type $rt for resource ${resource.resourceName}")
       }
@@ -3378,7 +3386,7 @@ class KafkaApis(val requestChannel: RequestChannel,
             new DescribeUserScramCredentialsResponse(result.setThrottleTimeMs(requestThrottleMs)))
         case RaftSupport(_, metadataCache) =>
           val result = metadataCache.describeScramCredentials(describeUserScramCredentialsRequest.data())
-          requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs => 
+          requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
             new DescribeUserScramCredentialsResponse(result.setThrottleTimeMs(requestThrottleMs)))
       }
     }
@@ -3658,6 +3666,31 @@ class KafkaApis(val requestChannel: RequestChannel,
           requestHelper.sendMaybeThrottle(request, new ConsumerGroupHeartbeatResponse(response))
         }
       }
+    }
+  }
+
+  def handleGetTelemetrySubscriptionRequest(request: RequestChannel.Request): Unit = {
+    val subscriptionRequest = request.body[GetTelemetrySubscriptionRequest]
+    try {
+      requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+        ClientMetricsManager.processGetTelemetrySubscriptionRequest(request, requestThrottleMs))
+    } catch {
+      case e: Exception =>
+        requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+          subscriptionRequest.getErrorResponse(requestThrottleMs, Errors.INVALID_REQUEST.exception))
+    }
+  }
+
+  // Just a place holder for now.
+  def handlePushTelemetryRequest(request: RequestChannel.Request): Unit = {
+    val pushTelemetryRequest = request.body[PushTelemetryRequest]
+    try {
+      requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+        ClientMetricsManager.processPushTelemetryRequest(request, requestThrottleMs))
+    } catch {
+      case e: Exception =>
+        requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
+          pushTelemetryRequest.getErrorResponse(requestThrottleMs, Errors.INVALID_REQUEST.exception))
     }
   }
 
