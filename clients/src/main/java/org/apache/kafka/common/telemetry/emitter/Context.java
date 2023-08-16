@@ -16,9 +16,9 @@
  */
 package org.apache.kafka.common.telemetry.emitter;
 
-import io.opentelemetry.proto.metrics.v1.InstrumentationLibraryMetrics;
 import io.opentelemetry.proto.metrics.v1.Metric;
 import io.opentelemetry.proto.metrics.v1.ResourceMetrics;
+import io.opentelemetry.proto.metrics.v1.ScopeMetrics;
 import io.opentelemetry.proto.resource.v1.Resource;
 import java.util.Collections;
 import java.util.HashMap;
@@ -119,13 +119,9 @@ public class Context {
     public ResourceMetrics buildMetric(Metric metric) {
         return ResourceMetrics.newBuilder()
             .setResource(resource)
-            .addInstrumentationLibraryMetrics(
-                InstrumentationLibraryMetrics.newBuilder()
-                    .addMetrics(metric)
-                    .build()
-//            .addScopeMetrics(ScopeMetrics.newBuilder()
-//                .addMetrics(metric)
-//                .build()
+            .addScopeMetrics(ScopeMetrics.newBuilder()
+                .addMetrics(metric)
+                .build()
             ).build();
     }
 
