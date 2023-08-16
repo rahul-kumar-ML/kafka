@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.kafka.clients.ClientTelemetrySender;
 import org.apache.kafka.common.Reconfigurable;
 import org.apache.kafka.common.annotation.InterfaceStability;
 import org.apache.kafka.common.config.ConfigException;
@@ -30,7 +31,7 @@ import org.apache.kafka.common.config.ConfigException;
  * <p>
  * Implement {@link org.apache.kafka.common.ClusterResourceListener} to receive cluster metadata once it's available. Please see the class documentation for ClusterResourceListener for more information.
  */
-public interface MetricsReporter extends Reconfigurable, AutoCloseable {
+public interface MetricsReporter extends Reconfigurable, AutoCloseable, ClientTelemetry {
 
     /**
      * This is called when the reporter is first registered to initially register all existing metrics
@@ -73,5 +74,15 @@ public interface MetricsReporter extends Reconfigurable, AutoCloseable {
      */
     @InterfaceStability.Evolving
     default void contextChange(MetricsContext metricsContext) {
+    }
+
+    @InterfaceStability.Evolving
+    default ClientTelemetrySender clientSender() {
+        return null;
+    }
+
+    @InterfaceStability.Evolving
+    default ClientTelemetryReceiver clientReceiver() {
+        return null;
     }
 }

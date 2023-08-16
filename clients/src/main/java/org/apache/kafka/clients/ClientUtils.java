@@ -155,7 +155,8 @@ public final class ClientUtils {
                                                     Time time,
                                                     int maxInFlightRequestsPerConnection,
                                                     Metadata metadata,
-                                                    Sensor throttleTimeSensor) {
+                                                    Sensor throttleTimeSensor,
+                                                    ClientTelemetrySender clientTelemetrySender) {
         return createNetworkClient(config,
                 config.getString(CommonClientConfigs.CLIENT_ID_CONFIG),
                 metrics,
@@ -168,7 +169,8 @@ public final class ClientUtils {
                 metadata,
                 null,
                 new DefaultHostResolver(),
-                throttleTimeSensor);
+                throttleTimeSensor,
+                clientTelemetrySender);
     }
 
     public static NetworkClient createNetworkClient(AbstractConfig config,
@@ -181,7 +183,8 @@ public final class ClientUtils {
                                                     int maxInFlightRequestsPerConnection,
                                                     int requestTimeoutMs,
                                                     MetadataUpdater metadataUpdater,
-                                                    HostResolver hostResolver) {
+                                                    HostResolver hostResolver,
+                                                    ClientTelemetrySender clientTelemetrySender) {
         return createNetworkClient(config,
                 clientId,
                 metrics,
@@ -194,7 +197,8 @@ public final class ClientUtils {
                 null,
                 metadataUpdater,
                 hostResolver,
-                null);
+                null,
+                clientTelemetrySender);
     }
 
     public static NetworkClient createNetworkClient(AbstractConfig config,
@@ -209,7 +213,8 @@ public final class ClientUtils {
                                                     Metadata metadata,
                                                     MetadataUpdater metadataUpdater,
                                                     HostResolver hostResolver,
-                                                    Sensor throttleTimeSensor) {
+                                                    Sensor throttleTimeSensor,
+                                                    ClientTelemetrySender clientTelemetrySender) {
         ChannelBuilder channelBuilder = null;
         Selector selector = null;
 
@@ -238,7 +243,8 @@ public final class ClientUtils {
                     apiVersions,
                     throttleTimeSensor,
                     logContext,
-                    hostResolver);
+                    hostResolver,
+                    clientTelemetrySender);
         } catch (Throwable t) {
             closeQuietly(selector, "Selector");
             closeQuietly(channelBuilder, "ChannelBuilder");

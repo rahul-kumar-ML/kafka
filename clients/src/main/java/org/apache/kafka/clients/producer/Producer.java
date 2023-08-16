@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.clients.producer;
 
+import java.util.Optional;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
@@ -94,6 +95,13 @@ public interface Producer<K, V> extends Closeable {
      * See {@link KafkaProducer#metrics()}
      */
     Map<MetricName, ? extends Metric> metrics();
+
+    /**
+     * See {@link KafkaProducer#clientInstanceId(Duration)}}
+     */
+    default Optional<String> clientInstanceId(Duration timeout) {
+        return Optional.empty();
+    };
 
     /**
      * See {@link KafkaProducer#close()}

@@ -17,6 +17,7 @@
 package org.apache.kafka.clients.consumer.internals;
 
 import org.apache.kafka.clients.ApiVersions;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.GroupRebalanceConfig;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -33,6 +34,7 @@ import org.apache.kafka.clients.consumer.internals.events.CommitApplicationEvent
 import org.apache.kafka.clients.consumer.internals.events.EventHandler;
 import org.apache.kafka.clients.consumer.internals.events.NewTopicsMetadataUpdateRequestEvent;
 import org.apache.kafka.clients.consumer.internals.events.OffsetFetchApplicationEvent;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
@@ -43,6 +45,7 @@ import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.InvalidGroupIdException;
 import org.apache.kafka.common.internals.ClusterResourceListeners;
 import org.apache.kafka.common.metrics.Metrics;
+import org.apache.kafka.common.metrics.MetricsReporter;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
@@ -120,7 +123,9 @@ public class PrototypeAsyncConsumer<K, V> implements Consumer<K, V> {
         this.keyDeserializer = createKeyDeserializer(config, keyDeserializer);
         this.valueDeserializer = createValueDeserializer(config, valueDeserializer);
         this.subscriptions = createSubscriptionState(config, logContext);
-        this.metrics = createMetrics(config, time);
+        List<MetricsReporter> reporters = CommonClientConfigs.metricsReporters(config.getString(
+            ConsumerConfig.CLIENT_ID_CONFIG), config);
+        this.metrics = createMetrics(config, time, reporters);
         List<ConsumerInterceptor<K, V>> interceptorList = createConsumerInterceptors(config);
         ClusterResourceListeners clusterResourceListeners = configureClusterResourceListeners(this.keyDeserializer,
                 this.valueDeserializer, metrics.reporters(), interceptorList);
@@ -481,6 +486,11 @@ public class PrototypeAsyncConsumer<K, V> implements Consumer<K, V> {
         } catch (final Exception e) {
             throw e;
         }
+    }
+
+    @Override
+    public Optional<String> clientInstanceId(Duration timeout) {
+        return Optional.empty();
     }
 
     @Override

@@ -21,6 +21,8 @@ import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.metrics.JmxReporter;
 import org.apache.kafka.common.metrics.MetricsReporter;
+import org.apache.kafka.common.config.ConfigException;
+import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
@@ -88,6 +90,10 @@ public class CommonClientConfigs {
 
     public static final String RETRY_BACKOFF_MS_CONFIG = "retry.backoff.ms";
     public static final String RETRY_BACKOFF_MS_DOC = "The amount of time to wait before attempting to retry a failed request to a given topic partition. This avoids repeatedly sending requests in a tight loop under some failure scenarios.";
+
+    public static final String ENABLE_METRICS_PUSH_CONFIG = "enable.metrics.push";
+    public static final String ENABLE_METRICS_PUSH_DOC = "Kafka client telemetry provides Kafka operators improved visibility over the behavior and internals of the clients that use the cluster." +
+        " Setting this to false will disable Kafka client telemetry.";
 
     public static final String METRICS_SAMPLE_WINDOW_MS_CONFIG = "metrics.sample.window.ms";
     public static final String METRICS_SAMPLE_WINDOW_MS_DOC = "The window of time a metrics sample is computed over.";
@@ -242,6 +248,12 @@ public class CommonClientConfigs {
             JmxReporter jmxReporter = new JmxReporter();
             jmxReporter.configure(config.originals(clientIdOverride));
             reporters.add(jmxReporter);
+        }
+        if (config.getBoolean(CommonClientConfigs.ENABLE_METRICS_PUSH_CONFIG) &&
+            reporters.stream().noneMatch(r -> ClientTelemetryReporter.class.equals(r.getClass()))) {
+            ClientTelemetryReporter telemetryReporter = new ClientTelemetryReporter();
+            telemetryReporter.configure(config.originals(clientIdOverride));
+            reporters.add(telemetryReporter);
         }
         return reporters;
     }

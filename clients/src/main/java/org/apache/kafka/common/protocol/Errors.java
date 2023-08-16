@@ -20,6 +20,8 @@ import org.apache.kafka.common.InvalidRecordException;
 import org.apache.kafka.common.errors.ApiException;
 import org.apache.kafka.common.errors.BrokerIdNotRegisteredException;
 import org.apache.kafka.common.errors.BrokerNotAvailableException;
+import org.apache.kafka.common.errors.ClientMetricsRateLimitedException;
+import org.apache.kafka.common.errors.ClientMetricsReceiverPluginNotFoundException;
 import org.apache.kafka.common.errors.ClusterAuthorizationException;
 import org.apache.kafka.common.errors.ConcurrentTransactionsException;
 import org.apache.kafka.common.errors.ControllerMovedException;
@@ -118,6 +120,7 @@ import org.apache.kafka.common.errors.TransactionCoordinatorFencedException;
 import org.apache.kafka.common.errors.TransactionalIdAuthorizationException;
 import org.apache.kafka.common.errors.TransactionalIdNotFoundException;
 import org.apache.kafka.common.errors.UnacceptableCredentialException;
+import org.apache.kafka.common.errors.UnknownClientMetricsSubscriptionIdException;
 import org.apache.kafka.common.errors.UnknownLeaderEpochException;
 import org.apache.kafka.common.errors.UnknownMemberIdException;
 import org.apache.kafka.common.errors.UnknownProducerIdException;
@@ -380,7 +383,10 @@ public enum Errors {
     FENCED_MEMBER_EPOCH(110, "The member epoch is fenced by the group coordinator. The member must abandon all its partitions and rejoin.", FencedMemberEpochException::new),
     UNRELEASED_INSTANCE_ID(111, "The instance ID is still used by another member in the consumer group. That member must leave first.", UnreleasedInstanceIdException::new),
     UNSUPPORTED_ASSIGNOR(112, "The assignor or its version range is not supported by the consumer group.", UnsupportedAssignorException::new),
-    STALE_MEMBER_EPOCH(113, "The member epoch is stale. The member must retry after receiving its updated member epoch via the ConsumerGroupHeartbeat API.", StaleMemberEpochException::new);
+    STALE_MEMBER_EPOCH(113, "The member epoch is stale. The member must retry after receiving its updated member epoch via the ConsumerGroupHeartbeat API.", StaleMemberEpochException::new),
+    CLIENT_METRICS_RATE_LIMITED(114, "Client pushed the metrics before the next push interval", ClientMetricsRateLimitedException::new),
+    CLIENT_METRICS_PLUGIN_NOT_FOUND(115, "Broker does not have any client metrics plugin configured", ClientMetricsReceiverPluginNotFoundException::new),
+    UNKNOWN_CLIENT_METRICS_SUBSCRIPTION_ID(116, "Client metric subscription id does not match with broker's cached value", UnknownClientMetricsSubscriptionIdException::new);
 
     private static final Logger log = LoggerFactory.getLogger(Errors.class);
 

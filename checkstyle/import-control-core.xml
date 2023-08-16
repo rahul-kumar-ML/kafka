@@ -103,6 +103,10 @@
     <allow pkg="kafka.zk" />
     <allow pkg="org.apache.kafka.clients.admin"/>
     <allow pkg="integration.kafka.server" class="IntegrationTestHelper"/>
+    <allow pkg="io.opentelemetry.proto.metrics" />
+    <allow pkg="io.opentelemetry.proto.common.v1" />
+    <allow pkg="io.opentelemetry.proto.collector" />
+    <allow pkg="io.opentelemetry.proto.resource.v1" />
     <subpackage name="annotation">
       <allow pkg="kafka.test"/>
     </subpackage>

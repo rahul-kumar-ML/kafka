@@ -278,6 +278,11 @@ public class ForwardingAdmin implements Admin {
     }
 
     @Override
+    public Optional<String> clientInstanceId(Duration timeout) {
+        return Optional.empty();
+    }
+
+    @Override
     public Map<MetricName, ? extends Metric> metrics() {
         return delegate.metrics();
     }

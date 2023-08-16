@@ -188,6 +188,24 @@
       <allow class="org.apache.kafka.common.header.Headers" />
     </subpackage>
 
+    <subpackage name="telemetry">
+      <subpackage name="collector">
+        <allow pkg="org.apache.kafka.common.metrics"/>
+        <allow pkg="org.apache.kafka.common.metrics.stats"/>
+        <allow pkg="org.apache.kafka.common.telemetry"/>
+        <allow pkg="org.apache.kafka.common.telemetry.emitter"/>
+      </subpackage>
+
+      <subpackage name="emitter">
+        <allow pkg="org.apache.kafka.common.telemetry.metrics"/>
+      </subpackage>
+
+      <subpackage name="metrics">
+        <allow pkg="org.apache.kafka.common.telemetry.collector"/>
+        <allow pkg="org.apache.kafka.common.telemetry.emitter"/>
+      </subpackage>
+    </subpackage>
+
     <subpackage name="utils">
       <allow pkg="org.apache.kafka.common" />
       <allow pkg="org.apache.log4j" />
@@ -196,12 +214,24 @@
     <subpackage name="quotas">
       <allow pkg="org.apache.kafka.common" />
     </subpackage>
+
+    <subpackage name="test">
+      <allow pkg="io.opentelemetry.proto.metrics" />
+      <allow pkg="io.opentelemetry.proto.common.v1" />
+      <allow pkg="io.opentelemetry.proto.collector" />
+      <allow pkg="io.opentelemetry.proto.resource.v1" />
+      <allow pkg="org.apache.kafka" />
+    </subpackage>
   </subpackage>
 
   <subpackage name="clients">
     <allow pkg="org.apache.kafka.common" />
-    <allow pkg="org.apache.kafka.clients" exact-match="true"/>
+    <allow pkg="org.apache.kafka.clients"/>
     <allow pkg="org.apache.kafka.test" />
+    <allow pkg="io.opentelemetry.proto.metrics" />
+    <allow pkg="io.opentelemetry.proto.common.v1" />
+    <allow pkg="io.opentelemetry.proto.collector" />
+    <allow pkg="io.opentelemetry.proto.resource.v1" />
 
     <subpackage name="consumer">
       <allow pkg="org.apache.kafka.clients.consumer" />
@@ -217,6 +247,15 @@
       <allow pkg="org.apache.kafka.clients.consumer.internals" />
       <allow pkg="org.apache.kafka.clients.consumer" />
     </subpackage>
+
+    <subpackage name="test">
+      <allow pkg="io.opentelemetry.proto.metrics" />
+      <allow pkg="io.opentelemetry.proto.common.v1" />
+      <allow pkg="io.opentelemetry.proto.collector" />
+      <allow pkg="io.opentelemetry.proto.resource.v1" />
+      <allow pkg="org.apache.kafka" />
+    </subpackage>
+
   </subpackage>
 
   <subpackage name="coordinator">
