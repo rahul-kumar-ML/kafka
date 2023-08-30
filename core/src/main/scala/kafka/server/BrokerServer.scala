@@ -306,6 +306,7 @@ class BrokerServer(
 
       dynamicConfigHandlers = Map[String, ConfigHandler](
         ConfigType.Topic -> new TopicConfigHandler(logManager, config, quotaManagers, None),
+        ConfigType.ClientMetrics -> new ClientMetricsConfigHandler,
         ConfigType.Broker -> new BrokerConfigHandler(config, quotaManagers))
 
       val networkListeners = new ListenerCollection()
