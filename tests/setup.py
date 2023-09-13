@@ -51,7 +51,7 @@ setup(name="kafkatest",
       license="apache2.0",
       packages=find_packages(),
       include_package_data=True,
-      install_requires="ducktape==0.8.18",
+      install_requires="ducktape @ git+https://git@github.com/confluentinc/ducktape.git@libFix8",
       tests_require=["pytest", "mock"],
       cmdclass={'test': PyTest},
       zip_safe=False
