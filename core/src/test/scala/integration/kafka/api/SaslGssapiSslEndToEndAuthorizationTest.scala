@@ -21,6 +21,7 @@ import kafka.server.KafkaConfig
 import kafka.utils.JaasTestUtils
 import org.apache.kafka.common.security.auth.KafkaPrincipal
 
+import scala.annotation.nowarn
 import scala.collection.immutable.List
 
 // Note: this test currently uses the deprecated SimpleAclAuthorizer to ensure we have test coverage
@@ -33,6 +34,8 @@ class SaslGssapiSslEndToEndAuthorizationTest extends SaslEndToEndAuthorizationTe
 
   override protected def kafkaClientSaslMechanism = "GSSAPI"
   override protected def kafkaServerSaslMechanisms = List("GSSAPI")
+
+  @nowarn("cat=deprecation")
   override protected def authorizerClass = classOf[SimpleAclAuthorizer]
 
   // Configure brokers to require SSL client authentication in order to verify that SASL_SSL works correctly even if the

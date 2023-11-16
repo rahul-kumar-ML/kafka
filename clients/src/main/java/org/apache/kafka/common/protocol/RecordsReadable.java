@@ -61,8 +61,15 @@ public class RecordsReadable implements Readable {
     }
 
     @Override
-    public void readArray(byte[] arr) {
+    public byte[] readArray(int size) {
+        int remaining = buf.remaining();
+        if (size > remaining) {
+            throw new RuntimeException("Error reading byte array of " + size + " byte(s): only " + remaining +
+              " byte(s) available");
+        }
+        byte[] arr = new byte[size];
         buf.get(arr);
+        return arr;
     }
 
     @Override
@@ -88,5 +95,10 @@ public class RecordsReadable implements Readable {
             ByteBuffer recordsBuffer = readByteBuffer(length);
             return MemoryRecords.readableRecords(recordsBuffer);
         }
+    }
+
+    @Override
+    public int remaining() {
+        return buf.remaining();
     }
 }
