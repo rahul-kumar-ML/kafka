@@ -808,9 +808,12 @@ project(':core') {
     compile(libs.zookeeper) {
       exclude module: 'slf4j-log4j12'
       exclude module: 'log4j'
+      exclude module: 'logback-classic'
+      exclude module: 'logback-core'
     }
     // ZooKeeperMain depends on commons-cli but declares the dependency as `provided`
     compile libs.commonsCli
+    compile libs.dropwizardMetrics
 
     compileOnly libs.log4j
 
