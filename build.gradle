@@ -424,7 +424,7 @@ subprojects {
       exceptionFormat = testExceptionFormat
     }
     logTestStdout.rehydrate(delegate, owner, this)()
-    
+
     // The suites are for running sets of tests in IDEs.
     // Gradle will run each test class, so we exclude the suites to avoid redundantly running the tests twice.
     exclude '**/*Suite.class'
@@ -824,9 +824,12 @@ project(':core') {
     compile(libs.zookeeper) {
       exclude module: 'slf4j-log4j12'
       exclude module: 'log4j'
+      exclude module: 'logback-classic'
+      exclude module: 'logback-core'
     }
     // ZooKeeperMain depends on commons-cli but declares the dependency as `provided`
     compile libs.commonsCli
+    compile libs.dropwizardMetrics
 
     compileOnly libs.log4j
 
@@ -1343,7 +1346,7 @@ project(':raft') {
       }
     }
   }
-  
+
   compileJava.dependsOn 'processMessages'
 
   jar {
