@@ -21,7 +21,6 @@ import java.util.Locale
 import java.util.concurrent.locks.{ReentrantLock, ReentrantReadWriteLock}
 import java.util.concurrent._
 import java.util.{List => JList}
-
 import com.yammer.metrics.core.MetricName
 import kafka.metrics.KafkaMetricsGroup
 import kafka.utils.CoreUtils.{inLock, inReadLock, inWriteLock}
@@ -34,6 +33,7 @@ import org.apache.zookeeper.ZooKeeper.States
 import org.apache.zookeeper.data.{ACL, Stat}
 import org.apache.zookeeper._
 import org.apache.zookeeper.client.ZKClientConfig
+import org.apache.zookeeper.common.ZKConfig
 
 import scala.jdk.CollectionConverters._
 import scala.collection.Seq
@@ -103,7 +103,24 @@ class ZooKeeperClient(connectString: String,
     }
   }
 
-  private val clientConfig = zkClientConfig getOrElse new ZKClientConfig()
+  private val clientConfig = {
+    /* ZooKeeper 3.6.0 changed the default configuration for JUTE_MAXBUFFER from 4 MB to 1 MB.
+    * This causes a regression if Kafka tries to retrieve a large amount of data across many
+    * znodes – in such a case the ZooKeeper client will repeatedly emit a message of the form
+    * "java.io.IOException: Packet len <####> is out of range".
+    *
+    * We restore the 3.4.x/3.5.x behavior unless the caller has set the property (note that ZKConfig
+    * auto configures itself if certain system properties have been set).
+    *
+    * See https://github.com/apache/zookeeper/pull/1129 for the details on why the behavior
+    * changed in 3.6.0.
+    */
+    val finalZkConfig = zkClientConfig getOrElse new ZKClientConfig()
+    if (finalZkConfig.getProperty(ZKConfig.JUTE_MAXBUFFER) == null) {
+      finalZkConfig.setProperty(ZKConfig.JUTE_MAXBUFFER, ((4096 * 1024).toString))
+    }
+    finalZkConfig
+  }
 
   info(s"Initializing a new session to $connectString.")
   // Fail-fast if there's an error during construction (so don't call initialize, which retries forever)
