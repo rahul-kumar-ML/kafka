@@ -16,6 +16,8 @@
  */
 package org.apache.kafka.connect.runtime.distributed;
 
+import java.util.Map.Entry;
+
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.runtime.distributed.WorkerCoordinator.ConnectorsAndTasks;
@@ -51,7 +53,7 @@ import static org.apache.kafka.connect.runtime.distributed.WorkerCoordinator.Lea
  * cooperative strategy for rebalancing. {@see
  * https://cwiki.apache.org/confluence/display/KAFKA/KIP-415%3A+Incremental+Cooperative
  * +Rebalancing+in+Kafka+Connect} for a description of the assignment policy.
- *
+ * <p>
  * Note that this class is NOT thread-safe.
  */
 public class IncrementalCooperativeAssignor implements ConnectAssignor {
@@ -60,7 +62,6 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
     private final int maxDelay;
     private ConnectorsAndTasks previousAssignment;
     private ConnectorsAndTasks previousRevocation;
-    private boolean canRevoke;
     // visible for testing
     protected final Set<String> candidateWorkersForReassignment;
     protected long scheduledRebalance;
@@ -74,7 +75,6 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         this.maxDelay = maxDelay;
         this.previousAssignment = ConnectorsAndTasks.EMPTY;
         this.previousRevocation = new ConnectorsAndTasks.Builder().build();
-        this.canRevoke = true;
         this.scheduledRebalance = 0;
         this.candidateWorkersForReassignment = new LinkedHashSet<>();
         this.delay = 0;
@@ -101,10 +101,10 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         // the response so members that have fallen behind will not use the assignment until they have caught up.
         long maxOffset = memberConfigs.values().stream().map(ExtendedWorkerState::offset).max(Long::compare).get();
         log.debug("Max config offset root: {}, local snapshot config offsets root: {}",
-                  maxOffset, coordinator.configSnapshot().offset());
+                maxOffset, coordinator.configSnapshot().offset());
 
         short protocolVersion = memberConfigs.values().stream()
-            .allMatch(state -> state.assignment().version() == CONNECT_PROTOCOL_V2)
+                .allMatch(state -> state.assignment().version() == CONNECT_PROTOCOL_V2)
                 ? CONNECT_PROTOCOL_V2
                 : CONNECT_PROTOCOL_V1;
 
@@ -128,7 +128,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
             ClusterConfigState updatedSnapshot = coordinator.configFreshSnapshot();
             if (updatedSnapshot.offset() < maxOffset) {
                 log.info("Was selected to perform assignments, but do not have latest config found in sync request. "
-                         + "Returning an empty configuration to trigger re-sync.");
+                        + "Returning an empty configuration to trigger re-sync.");
                 return null;
             } else {
                 coordinator.configSnapshot(updatedSnapshot);
@@ -143,12 +143,12 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
      * Read more on the design and implementation in:
      * {@see https://cwiki.apache.org/confluence/display/KAFKA/KIP-415%3A+Incremental+Cooperative+Rebalancing+in+Kafka+Connect}
      *
-     * @param leaderId the ID of the group leader
-     * @param maxOffset the latest known offset of the configuration topic
-     * @param memberConfigs the metadata of all the members of the group as gather in the current
-     * round of rebalancing
-     * @param coordinator the worker coordinator instance that provide the configuration snapshot
-     * and get assigned the leader state during this assignment
+     * @param leaderId        the ID of the group leader
+     * @param maxOffset       the latest known offset of the configuration topic
+     * @param memberConfigs   the metadata of all the members of the group as gather in the current
+     *                        round of rebalancing
+     * @param coordinator     the worker coordinator instance that provide the configuration snapshot
+     *                        and get assigned the leader state during this assignment
      * @param protocolVersion the Connect subprotocol version
      * @return the serialized assignment of tasks to the whole group, including assigned or
      * revoked tasks
@@ -165,11 +165,11 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         int lastCompletedGenerationId = coordinator.lastCompletedGenerationId();
         if (previousGenerationId != lastCompletedGenerationId) {
             log.debug("Clearing the view of previous assignments due to generation mismatch between "
-                    + "previous generation ID {} and last completed generation ID {}. This can "
-                    + "happen if the leader fails to sync the assignment within a rebalancing round. "
-                    + "The following view of previous assignments might be outdated and will be "
-                    + "ignored by the leader in the current computation of new assignments. "
-                    + "Possibly outdated previous assignments: {}",
+                            + "previous generation ID {} and last completed generation ID {}. This can "
+                            + "happen if the leader fails to sync the assignment within a rebalancing round. "
+                            + "The following view of previous assignments might be outdated and will be "
+                            + "ignored by the leader in the current computation of new assignments. "
+                            + "Possibly outdated previous assignments: {}",
                     previousGenerationId, lastCompletedGenerationId, previousAssignment);
             this.previousAssignment = ConnectorsAndTasks.EMPTY;
         }
@@ -197,21 +197,16 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
             if (previousRevocation.connectors().stream().anyMatch(c -> activeAssignments.connectors().contains(c))
                     || previousRevocation.tasks().stream().anyMatch(t -> activeAssignments.tasks().contains(t))) {
                 previousAssignment = activeAssignments;
-                canRevoke = true;
             }
             previousRevocation.connectors().clear();
             previousRevocation.tasks().clear();
         }
 
+
         // Derived set: The set of deleted connectors-and-tasks is a derived set from the set
         // difference of previous - configured
         ConnectorsAndTasks deleted = diff(previousAssignment, configured);
         log.debug("Deleted assignments: {}", deleted);
-
-        // Derived set: The set of remaining active connectors-and-tasks is a derived set from the
-        // set difference of active - deleted
-        ConnectorsAndTasks remainingActive = diff(activeAssignments, deleted);
-        log.debug("Remaining (excluding deleted) active assignments: {}", remainingActive);
 
         // Derived set: The set of lost or unaccounted connectors-and-tasks is a derived set from
         // the set difference of previous - active - deleted
@@ -247,6 +242,10 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         toRevoke.putAll(computeDuplicatedAssignments(memberConfigs, connectorAssignments, taskAssignments));
         log.debug("Connector and task to revoke assignments (include duplicated assignments): {}", toRevoke);
 
+        List<WorkerLoad> currentWorkerAssignmentWithoutDuplication =
+                removeDuplicated(workerAssignment(memberConfigs, deleted), toRevoke);
+        log.debug("Complete (excluding deletions and remove duplicated assignments) worker assignments: {}", currentWorkerAssignmentWithoutDuplication);
+
         // Recompute the complete assignment excluding the deleted connectors-and-tasks
         completeWorkerAssignment = workerAssignment(memberConfigs, deleted);
         connectorAssignments =
@@ -257,30 +256,24 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         handleLostAssignments(lostAssignments, newSubmissions, completeWorkerAssignment, memberConfigs);
 
         // Do not revoke resources for re-assignment while a delayed rebalance is active
-        // Also we do not revoke in two consecutive rebalances by the same leader
-        canRevoke = delay == 0 && canRevoke;
-
-        // Compute the connectors-and-tasks to be revoked for load balancing without taking into
-        // account the deleted ones.
-        log.debug("Can leader revoke tasks in this assignment? {} (delay: {})", canRevoke, delay);
-        if (canRevoke) {
+        log.debug("Can leader revoke tasks in this assignment? (delay: {})", delay);
+        if (delay == 0) {
+            // Compute the connectors-and-tasks to be revoked for load balancing without taking into
+            // account the deleted ones.
             Map<String, ConnectorsAndTasks> toExplicitlyRevoke =
-                    performTaskRevocation(activeAssignments, currentWorkerAssignment);
-
-            log.debug("Connector and task to revoke assignments: {}", toRevoke);
+                    performTaskRevocation(configured, currentWorkerAssignmentWithoutDuplication);
 
             toExplicitlyRevoke.forEach(
-                (worker, assignment) -> {
-                    ConnectorsAndTasks existing = toRevoke.computeIfAbsent(
-                        worker,
-                        v -> new ConnectorsAndTasks.Builder().build());
-                    existing.connectors().addAll(assignment.connectors());
-                    existing.tasks().addAll(assignment.tasks());
-                }
+                    (worker, assignment) -> {
+                        ConnectorsAndTasks existing = toRevoke.computeIfAbsent(
+                                worker,
+                                v -> new ConnectorsAndTasks.Builder().build());
+                        existing.connectors().addAll(assignment.connectors());
+                        existing.tasks().addAll(assignment.tasks());
+                    }
             );
-            canRevoke = toExplicitlyRevoke.size() == 0;
-        } else {
-            canRevoke = delay == 0;
+
+            log.debug("Connector and task to revoke assignments: {}", toRevoke);
         }
 
         assignConnectors(completeWorkerAssignment, newSubmissions.connectors());
@@ -304,13 +297,22 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
 
         Map<String, ExtendedAssignment> assignments =
                 fillAssignments(memberConfigs.keySet(), Assignment.NO_ERROR, leaderId,
-                                memberConfigs.get(leaderId).url(), maxOffset, incrementalConnectorAssignments,
-                                incrementalTaskAssignments, toRevoke, delay, protocolVersion);
+                        memberConfigs.get(leaderId).url(), maxOffset, incrementalConnectorAssignments,
+                        incrementalTaskAssignments, toRevoke, delay, protocolVersion);
         previousAssignment = computePreviousAssignment(toRevoke, connectorAssignments, taskAssignments, lostAssignments);
         previousGenerationId = coordinator.generationId();
         previousMembers = memberConfigs.keySet();
         log.debug("Actual assignments: {}", assignments);
         return serializeAssignments(assignments);
+    }
+
+    private List<WorkerLoad> removeDuplicated(List<WorkerLoad> currentWorkerAssignmentWithoutDuplication,
+                                              Map<String, ConnectorsAndTasks> toRevoke) {
+        for (WorkerLoad wl : currentWorkerAssignmentWithoutDuplication) {
+            wl.connectors().removeAll(toRevoke.getOrDefault(wl.worker(), ConnectorsAndTasks.EMPTY).connectors());
+            wl.tasks().removeAll(toRevoke.getOrDefault(wl.worker(), ConnectorsAndTasks.EMPTY).tasks());
+        }
+        return currentWorkerAssignmentWithoutDuplication;
     }
 
     private Map<String, ConnectorsAndTasks> computeDeleted(ConnectorsAndTasks deleted,
@@ -325,14 +327,14 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         // Add the connectors that have been deleted to the revoked set
         deleted.connectors().forEach(c ->
                 toRevoke.computeIfAbsent(
-                    connectorOwners.get(c),
-                    v -> new ConnectorsAndTasks.Builder().build()
+                        connectorOwners.get(c),
+                        v -> new ConnectorsAndTasks.Builder().build()
                 ).connectors().add(c));
         // Add the tasks that have been deleted to the revoked set
         deleted.tasks().forEach(t ->
                 toRevoke.computeIfAbsent(
-                    taskOwners.get(t),
-                    v -> new ConnectorsAndTasks.Builder().build()
+                        taskOwners.get(t),
+                        v -> new ConnectorsAndTasks.Builder().build()
                 ).tasks().add(t));
         log.debug("Connectors and tasks to delete assignments: {}", toRevoke);
         return toRevoke;
@@ -344,7 +346,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                                                          ConnectorsAndTasks lostAssignments) {
         ConnectorsAndTasks previousAssignment = new ConnectorsAndTasks.Builder().with(
                 connectorAssignments.values().stream().flatMap(Collection::stream).collect(Collectors.toSet()),
-                taskAssignments.values() .stream() .flatMap(Collection::stream).collect(Collectors.toSet()))
+                taskAssignments.values().stream().flatMap(Collection::stream).collect(Collectors.toSet()))
                 .build();
 
         for (ConnectorsAndTasks revoked : toRevoke.values()) {
@@ -368,7 +370,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
                 .entrySet().stream()
                 .filter(entry -> entry.getValue() > 1L)
-                .map(entry -> entry.getKey())
+                .map(Entry::getKey)
                 .collect(Collectors.toSet());
 
         Set<ConnectorTaskId> tasks = memberConfigs.values().stream()
@@ -376,14 +378,14 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
                 .entrySet().stream()
                 .filter(entry -> entry.getValue() > 1L)
-                .map(entry -> entry.getKey())
+                .map(Entry::getKey)
                 .collect(Collectors.toSet());
         return new ConnectorsAndTasks.Builder().with(connectors, tasks).build();
     }
 
     private Map<String, ConnectorsAndTasks> computeDuplicatedAssignments(Map<String, ExtendedWorkerState> memberConfigs,
-                                             Map<String, Collection<String>> connectorAssignments,
-                                             Map<String, Collection<ConnectorTaskId>> taskAssignment) {
+                                                                         Map<String, Collection<String>> connectorAssignments,
+                                                                         Map<String, Collection<ConnectorTaskId>> taskAssignment) {
         ConnectorsAndTasks duplicatedAssignments = duplicatedAssignments(memberConfigs);
         log.debug("Duplicated assignments: {}", duplicatedAssignments);
 
@@ -395,8 +397,8 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                         duplicatedConnectors.retainAll(entry.getValue());
                         if (!duplicatedConnectors.isEmpty()) {
                             toRevoke.computeIfAbsent(
-                                entry.getKey(),
-                                v -> new ConnectorsAndTasks.Builder().build()
+                                    entry.getKey(),
+                                    v -> new ConnectorsAndTasks.Builder().build()
                             ).connectors().addAll(duplicatedConnectors);
                         }
                     });
@@ -408,8 +410,8 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                         duplicatedTasks.retainAll(entry.getValue());
                         if (!duplicatedTasks.isEmpty()) {
                             toRevoke.computeIfAbsent(
-                                entry.getKey(),
-                                v -> new ConnectorsAndTasks.Builder().build()
+                                    entry.getKey(),
+                                    v -> new ConnectorsAndTasks.Builder().build()
                             ).tasks().addAll(duplicatedTasks);
                         }
                     });
@@ -450,7 +452,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
             }
 
             if (!candidateWorkerLoad.isEmpty()) {
-                log.debug("Assigning lost tasks to {} candidate workers: {}", 
+                log.debug("Assigning lost tasks to {} candidate workers: {}",
                         candidateWorkerLoad.size(),
                         candidateWorkerLoad.stream().map(WorkerLoad::worker).collect(Collectors.joining(",")));
                 Iterator<WorkerLoad> candidateWorkerIterator = candidateWorkerLoad.iterator();
@@ -488,12 +490,10 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
                 log.debug("Delayed rebalance in progress. Task reassignment is postponed. New computed rebalance delay: {}", delay);
             } else {
                 // This means scheduledRebalance == 0
-                // We could also also extract the current minimum delay from the group, to make
-                // independent of consecutive leader failures, but this optimization is skipped
-                // at the moment
+                // We could also extract the current minimum delay from the group, to make
+                // independent of consecutive leader failures, but this optimization is skipped at the moment
                 delay = maxDelay;
-                log.debug("Resetting rebalance delay to the max: {}. scheduledRebalance: {} now: {} diff scheduledRebalance - now: {}",
-                        delay, scheduledRebalance, now, scheduledRebalance - now);
+                log.debug("Resetting rebalance delay to the max: {}.", delay);
             }
             scheduledRebalance = now + delay;
         }
@@ -531,23 +531,23 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
      * each existing worker. The revoked tasks, once assigned to the new workers will maintain
      * a balanced load among the group.
      *
-     * @param activeAssignments
-     * @param completeWorkerAssignment
-     * @return
+     * @param allConnectorsAndTasks                      all the connectors and tasks we need to distribute
+     * @param completeWorkerAssignmentWithoutDuplication current workers assignment without duplication
+     * @return the connectors/tasks that needed to be revoked on each worker, if no revoke is required, will return empty map
      */
-    private Map<String, ConnectorsAndTasks> performTaskRevocation(ConnectorsAndTasks activeAssignments,
-                                                                  Collection<WorkerLoad> completeWorkerAssignment) {
-        int totalActiveConnectorsNum = activeAssignments.connectors().size();
-        int totalActiveTasksNum = activeAssignments.tasks().size();
-        Collection<WorkerLoad> existingWorkers = completeWorkerAssignment.stream()
+    private Map<String, ConnectorsAndTasks> performTaskRevocation(ConnectorsAndTasks allConnectorsAndTasks,
+                                                                  Collection<WorkerLoad> completeWorkerAssignmentWithoutDuplication) {
+        int totalConnectorsNum = allConnectorsAndTasks.connectors().size();
+        int totalTasksNum = allConnectorsAndTasks.tasks().size();
+        Collection<WorkerLoad> existingWorkers = completeWorkerAssignmentWithoutDuplication.stream()
                 .filter(wl -> wl.size() > 0)
                 .collect(Collectors.toList());
         int existingWorkersNum = existingWorkers.size();
-        int totalWorkersNum = completeWorkerAssignment.size();
+        int totalWorkersNum = completeWorkerAssignmentWithoutDuplication.size();
         int newWorkersNum = totalWorkersNum - existingWorkersNum;
 
         if (log.isDebugEnabled()) {
-            completeWorkerAssignment.forEach(wl -> log.debug(
+            completeWorkerAssignmentWithoutDuplication.forEach(wl -> log.debug(
                     "Per worker current load size; worker: {} connectors: {} tasks: {}",
                     wl.worker(), wl.connectorsSize(), wl.tasksSize()));
         }
@@ -557,7 +557,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         // after logging the status
         if (!(newWorkersNum > 0 && existingWorkersNum > 0)) {
             log.debug("No task revocation required; workers with existing load: {} workers with "
-                    + "no load {} total workers {}",
+                            + "no load {} total workers {}",
                     existingWorkersNum, newWorkersNum, totalWorkersNum);
             // This is intentionally empty but mutable, because the map is used to include deleted
             // connectors and tasks as well
@@ -565,29 +565,30 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         }
 
         log.debug("Task revocation is required; workers with existing load: {} workers with "
-                + "no load {} total workers {}",
+                        + "no load {} total workers {}",
                 existingWorkersNum, newWorkersNum, totalWorkersNum);
 
         // We have at least one worker assignment (the leader itself) so totalWorkersNum can't be 0
-        log.debug("Previous rounded down (floor) average number of connectors per worker {}", totalActiveConnectorsNum / existingWorkersNum);
-        int floorConnectors = totalActiveConnectorsNum / totalWorkersNum;
-        int ceilConnectors = floorConnectors + ((totalActiveConnectorsNum % totalWorkersNum == 0) ? 0 : 1);
+        log.debug("Previous rounded down (floor) average number of connectors per worker {}", totalConnectorsNum / existingWorkersNum);
+        int floorConnectors = totalConnectorsNum / totalWorkersNum;
+        int ceilConnectors = floorConnectors + ((totalConnectorsNum % totalWorkersNum == 0) ? 0 : 1);
         log.debug("New average number of connectors per worker rounded down (floor) {} and rounded up (ceil) {}", floorConnectors, ceilConnectors);
 
 
-        log.debug("Previous rounded down (floor) average number of tasks per worker {}", totalActiveTasksNum / existingWorkersNum);
-        int floorTasks = totalActiveTasksNum / totalWorkersNum;
-        int ceilTasks = floorTasks + ((totalActiveTasksNum % totalWorkersNum == 0) ? 0 : 1);
+        log.debug("Previous rounded down (floor) average number of tasks per worker {}", totalTasksNum / existingWorkersNum);
+        int floorTasks = totalTasksNum / totalWorkersNum;
+        int ceilTasks = floorTasks + ((totalTasksNum % totalWorkersNum == 0) ? 0 : 1);
         log.debug("New average number of tasks per worker rounded down (floor) {} and rounded up (ceil) {}", floorTasks, ceilTasks);
         int numToRevoke;
 
         for (WorkerLoad existing : existingWorkers) {
             Iterator<String> connectors = existing.connectors().iterator();
             numToRevoke = existing.connectorsSize() - ceilConnectors;
+            log.debug("Connectors on worker {} is higher than ceiling, so revoking {} Connectors", existing, numToRevoke);
             for (int i = existing.connectorsSize(); i > floorConnectors && numToRevoke > 0; --i, --numToRevoke) {
                 ConnectorsAndTasks resources = revoking.computeIfAbsent(
-                    existing.worker(),
-                    w -> new ConnectorsAndTasks.Builder().build());
+                        existing.worker(),
+                        w -> new ConnectorsAndTasks.Builder().build());
                 resources.connectors().add(connectors.next());
             }
         }
@@ -598,8 +599,8 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
             log.debug("Tasks on worker {} is higher than ceiling, so revoking {} tasks", existing, numToRevoke);
             for (int i = existing.tasksSize(); i > floorTasks && numToRevoke > 0; --i, --numToRevoke) {
                 ConnectorsAndTasks resources = revoking.computeIfAbsent(
-                    existing.worker(),
-                    w -> new ConnectorsAndTasks.Builder().build());
+                        existing.worker(),
+                        w -> new ConnectorsAndTasks.Builder().build());
                 resources.tasks().add(tasks.next());
             }
         }
@@ -640,8 +641,8 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
         return assignments.entrySet()
                 .stream()
                 .collect(Collectors.toMap(
-                    Map.Entry::getKey,
-                    e -> IncrementalCooperativeConnectProtocol.serializeAssignment(e.getValue())));
+                        Map.Entry::getKey,
+                        e -> IncrementalCooperativeConnectProtocol.serializeAssignment(e.getValue())));
     }
 
     private static ConnectorsAndTasks diff(ConnectorsAndTasks base,
@@ -690,7 +691,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
      * that have equal load, starting with the least loaded workers.
      *
      * @param workerAssignment the current worker assignment; assigned connectors are added to this list
-     * @param connectors the connectors to be assigned
+     * @param connectors       the connectors to be assigned
      */
     protected void assignConnectors(List<WorkerLoad> workerAssignment, Collection<String> connectors) {
         workerAssignment.sort(WorkerLoad.connectorComparator());
@@ -720,7 +721,7 @@ public class IncrementalCooperativeAssignor implements ConnectAssignor {
      * have equal load, starting with the least loaded workers.
      *
      * @param workerAssignment the current worker assignment; assigned tasks are added to this list
-     * @param tasks the tasks to be assigned
+     * @param tasks            the tasks to be assigned
      */
     protected void assignTasks(List<WorkerLoad> workerAssignment, Collection<ConnectorTaskId> tasks) {
         workerAssignment.sort(WorkerLoad.taskComparator());

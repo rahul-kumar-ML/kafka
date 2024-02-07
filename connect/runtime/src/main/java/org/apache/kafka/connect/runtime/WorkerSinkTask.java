@@ -284,17 +284,71 @@ class WorkerSinkTask extends WorkerTask {
         return commitFailures;
     }
 
+    private String getProfileKey() {
+
+        if (SinkConnectorConfig.hasTopicsConfig(taskConfig)) {
+            List<String> topics = SinkConnectorConfig.parseTopicsList(taskConfig);
+            return topics.get(0).split("-")[1];
+        } else {
+            return taskConfig.get(SinkTask.TOPICS_REGEX_CONFIG).split("-")[1];
+        }
+    }
+
     /**
      * Initializes and starts the SinkTask.
      */
     protected void initializeAndStart() {
+
         SinkConnectorConfig.validate(taskConfig);
 
-        if (SinkConnectorConfig.hasTopicsConfig(taskConfig)) {
+        if (id.connector().startsWith("es-") || id.connector().startsWith("s3-") ||
+                id.connector().startsWith("wasb-") || id.connector().startsWith("gcs-")) {
+
+            // maximum number of tasks that are being initialised. This config helps to decide which topic to consume from.
+            // Even if assignor makes a mistake (maybe due to partial config read etc.) we use the task-id and
+            // #max-tasks to determine which topic to consume from
+            int maxTasks = Integer.parseInt(taskConfig.get(SinkConnectorConfig.TASKS_MAX_CONFIG));
+
+            if (id.connector().startsWith("es-") && maxTasks % 5 != 0) {
+
+                throw new ConnectException(String.format("Elasticsearch connector %s has a task count which isn't multiple of 5", id.connector()));
+
+            } else if ((id.connector().startsWith("s3-") || id.connector().startsWith("wasb-") ||
+                    id.connector().startsWith("gcs-")) && maxTasks % 2 != 0) {
+
+                throw new ConnectException(String.format("Archival connector %s has a task count which isn't multiple of 2", id.connector()));
+            }
+
+            // Number of tasks in group after dividing into n groups (n==5 for ES and n==2 for S3 connector)
+            int groupLength = id.connector().startsWith("es-") ? maxTasks / 5 : maxTasks / 2;
+
+            String topicType = "";
+
+            if ((id.task() + 1) <= groupLength) {
+                topicType = "log";     // Group number 1 -> dedicated to log topic
+            } else if ((id.task() + 1) <= (groupLength * 2)) {
+                topicType = "metric";  // Group number 2 -> dedicated to metric topic
+            } else if ((id.task() + 1) <= (groupLength * 3)) {
+                topicType = "control"; // Group number 3 -> dedicated to control topic
+            } else if ((id.task() + 1) <= (groupLength * 4)) {
+                topicType = "trace";   // Group number 4 -> dedicated to trace topic
+            } else if ((id.task() + 1) <= (groupLength * 5)) {
+                topicType = "profile";   // Group number 5 -> dedicated to profile topic
+            }
+
+            List<String> topics = new ArrayList<>();
+            topics.add(topicType + "-" + getProfileKey());
+            consumer.subscribe(topics, new HandleRebalance());
+            log.debug("{} Initializing and starting task for topic {}", this, topics.get(0));
+
+        } else if (SinkConnectorConfig.hasTopicsConfig(taskConfig)) {
+
             List<String> topics = SinkConnectorConfig.parseTopicsList(taskConfig);
             consumer.subscribe(topics, new HandleRebalance());
             log.debug("{} Initializing and starting task for topics {}", this, Utils.join(topics, ", "));
+
         } else {
+
             String topicsRegexStr = taskConfig.get(SinkTask.TOPICS_REGEX_CONFIG);
             Pattern pattern = Pattern.compile(topicsRegexStr);
             consumer.subscribe(pattern, new HandleRebalance());
@@ -332,7 +386,7 @@ class WorkerSinkTask extends WorkerTask {
     }
 
     private void doCommitSync(Map<TopicPartition, OffsetAndMetadata> offsets, int seqno) {
-        log.info("{} Committing offsets synchronously using sequence number {}: {}", this, seqno, offsets);
+        log.debug("{} Committing offsets synchronously using sequence number {}: {}", this, seqno, offsets);
         try {
             consumer.commitSync(offsets);
             onCommitCompleted(null, seqno, offsets);
@@ -346,7 +400,7 @@ class WorkerSinkTask extends WorkerTask {
     }
 
     private void doCommitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, final int seqno) {
-        log.info("{} Committing offsets asynchronously using sequence number {}: {}", this, seqno, offsets);
+        log.debug("{} Committing offsets asynchronously using sequence number {}: {}", this, seqno, offsets);
         OffsetCommitCallback cb = new OffsetCommitCallback() {
             @Override
             public void onComplete(Map<TopicPartition, OffsetAndMetadata> offsets, Exception error) {

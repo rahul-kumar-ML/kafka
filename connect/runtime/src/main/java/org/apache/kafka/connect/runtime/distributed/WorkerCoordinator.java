@@ -43,7 +43,6 @@ import java.util.Objects;
 
 import static org.apache.kafka.common.message.JoinGroupRequestData.JoinGroupRequestProtocolCollection;
 import static org.apache.kafka.common.message.JoinGroupResponseData.JoinGroupResponseMember;
-import static org.apache.kafka.connect.runtime.distributed.ConnectProtocolCompatibility.EAGER;
 
 /**
  * This class manages the coordination process with the Kafka group coordinator on the broker for managing assignments
@@ -67,6 +66,7 @@ public class WorkerCoordinator extends AbstractCoordinator implements Closeable 
     private volatile int lastCompletedGenerationId;
     private final ConnectAssignor eagerAssignor;
     private final ConnectAssignor incrementalAssignor;
+    private final ConnectAssignor incrementalAPMAssignor;
     private final int coordinatorDiscoveryTimeoutMs;
 
     /**
@@ -97,6 +97,7 @@ public class WorkerCoordinator extends AbstractCoordinator implements Closeable 
         this.listener = listener;
         this.rejoinRequested = false;
         this.protocolCompatibility = protocolCompatibility;
+        this.incrementalAPMAssignor = new IncrementalCooperativeAPMAssignor(logContext, time, maxDelay);
         this.incrementalAssignor = new IncrementalCooperativeAssignor(logContext, time, maxDelay);
         this.eagerAssignor = new EagerAssignor(logContext);
         this.currentConnectProtocol = protocolCompatibility;
@@ -178,6 +179,10 @@ public class WorkerCoordinator extends AbstractCoordinator implements Closeable 
                 return IncrementalCooperativeConnectProtocol.metadataRequest(workerState, false);
             case SESSIONED:
                 return IncrementalCooperativeConnectProtocol.metadataRequest(workerState, true);
+            case APM_COMPATIBLE:
+                return IncrementalCooperativeAPMConnectProtocol.metadataRequest(workerState, false);
+            case APM_SESSIONED:
+                return IncrementalCooperativeAPMConnectProtocol.metadataRequest(workerState, true);
             default:
                 throw new IllegalStateException("Unknown Connect protocol compatibility mode " + protocolCompatibility);
         }
@@ -193,21 +198,32 @@ public class WorkerCoordinator extends AbstractCoordinator implements Closeable 
         // tasks. It's the responsibility of the code driving this process to decide how to react (e.g. trying to get
         // up to date, try to rejoin again, leaving the group and backing off, etc.).
         rejoinRequested = false;
-        if (currentConnectProtocol != EAGER) {
-            if (!newAssignment.revokedConnectors().isEmpty() || !newAssignment.revokedTasks().isEmpty()) {
-                listener.onRevoked(newAssignment.leader(), newAssignment.revokedConnectors(), newAssignment.revokedTasks());
-            }
 
-            final ExtendedAssignment localAssignmentSnapshot = assignmentSnapshot;
-            if (localAssignmentSnapshot != null) {
-                localAssignmentSnapshot.connectors().removeAll(newAssignment.revokedConnectors());
-                localAssignmentSnapshot.tasks().removeAll(newAssignment.revokedTasks());
-                log.debug("After revocations snapshot of assignment: {}", localAssignmentSnapshot);
-                newAssignment.connectors().addAll(localAssignmentSnapshot.connectors());
-                newAssignment.tasks().addAll(localAssignmentSnapshot.tasks());
-            }
-            log.debug("Augmented new assignment: {}", newAssignment);
+        switch (currentConnectProtocol) {
+
+            case COMPATIBLE:
+            case SESSIONED:
+            case APM_COMPATIBLE:
+            case APM_SESSIONED:
+                if (!newAssignment.revokedConnectors().isEmpty() || !newAssignment.revokedTasks().isEmpty()) {
+                    listener.onRevoked(newAssignment.leader(), newAssignment.revokedConnectors(), newAssignment.revokedTasks());
+                }
+
+                final ExtendedAssignment localAssignmentSnapshot = assignmentSnapshot;
+                if (localAssignmentSnapshot != null) {
+                    localAssignmentSnapshot.connectors().removeAll(newAssignment.revokedConnectors());
+                    localAssignmentSnapshot.tasks().removeAll(newAssignment.revokedTasks());
+                    log.debug("After revocations snapshot of assignment: {}", localAssignmentSnapshot);
+                    newAssignment.connectors().addAll(localAssignmentSnapshot.connectors());
+                    newAssignment.tasks().addAll(localAssignmentSnapshot.tasks());
+                }
+                log.debug("Augmented new assignment: {}", newAssignment);
+                break;
+
+            default:
+                break;
         }
+
         assignmentSnapshot = newAssignment;
         lastCompletedGenerationId = generation;
         listener.onAssigned(newAssignment, generation);
@@ -215,9 +231,20 @@ public class WorkerCoordinator extends AbstractCoordinator implements Closeable 
 
     @Override
     protected Map<String, ByteBuffer> performAssignment(String leaderId, String protocol, List<JoinGroupResponseMember> allMemberMetadata) {
-        return ConnectProtocolCompatibility.fromProtocol(protocol) == EAGER
-               ? eagerAssignor.performAssignment(leaderId, protocol, allMemberMetadata, this)
-               : incrementalAssignor.performAssignment(leaderId, protocol, allMemberMetadata, this);
+
+        switch (ConnectProtocolCompatibility.fromProtocol(protocol)) {
+            case EAGER:
+                return eagerAssignor.performAssignment(leaderId, protocol, allMemberMetadata, this);
+
+            case APM_COMPATIBLE:
+            case APM_SESSIONED:
+                return incrementalAPMAssignor.performAssignment(leaderId, protocol, allMemberMetadata, this);
+
+            case COMPATIBLE:
+            case SESSIONED:
+            default:
+                return incrementalAssignor.performAssignment(leaderId, protocol, allMemberMetadata, this);
+        }
     }
 
     @Override
@@ -225,13 +252,26 @@ public class WorkerCoordinator extends AbstractCoordinator implements Closeable 
         log.info("Rebalance started");
         leaderState(null);
         final ExtendedAssignment localAssignmentSnapshot = assignmentSnapshot;
-        if (currentConnectProtocol == EAGER) {
-            log.debug("Revoking previous assignment {}", localAssignmentSnapshot);
-            if (localAssignmentSnapshot != null && !localAssignmentSnapshot.failed())
-                listener.onRevoked(localAssignmentSnapshot.leader(), localAssignmentSnapshot.connectors(), localAssignmentSnapshot.tasks());
-        } else {
-            log.debug("Cooperative rebalance triggered. Keeping assignment {} until it's "
-                      + "explicitly revoked.", localAssignmentSnapshot);
+
+        switch (currentConnectProtocol) {
+
+            case EAGER:
+                log.debug("EAGER: Revoking previous assignment {}", localAssignmentSnapshot);
+                if (localAssignmentSnapshot != null && !localAssignmentSnapshot.failed())
+                    listener.onRevoked(localAssignmentSnapshot.leader(), localAssignmentSnapshot.connectors(), localAssignmentSnapshot.tasks());
+                break;
+
+            case COMPATIBLE:
+            case SESSIONED:
+                log.debug("Cooperative rebalance triggered. Keeping assignment {} until it's "
+                        + "explicitly revoked.", localAssignmentSnapshot);
+                break;
+
+            case APM_COMPATIBLE:
+            case APM_SESSIONED:
+                log.debug("APM Cooperative rebalance triggered. Keeping assignment {} until it's "
+                        + "explicitly revoked.", localAssignmentSnapshot);
+                break;
         }
     }
 
@@ -373,11 +413,11 @@ public class WorkerCoordinator extends AbstractCoordinator implements Closeable 
             };
 
             metrics.addMetric(metrics.metricName("assigned-connectors",
-                              this.metricGrpName,
-                              "The number of connector instances currently assigned to this consumer"), numConnectors);
+                    this.metricGrpName,
+                    "The number of connector instances currently assigned to this consumer"), numConnectors);
             metrics.addMetric(metrics.metricName("assigned-tasks",
-                              this.metricGrpName,
-                              "The number of tasks currently assigned to this consumer"), numTasks);
+                    this.metricGrpName,
+                    "The number of tasks currently assigned to this consumer"), numTasks);
         }
     }
 
@@ -571,8 +611,8 @@ public class WorkerCoordinator extends AbstractCoordinator implements Closeable 
             return (left, right) -> {
                 int res = left.connectors.size() - right.connectors.size();
                 return res != 0 ? res : left.worker == null
-                                        ? right.worker == null ? 0 : -1
-                                        : left.worker.compareTo(right.worker);
+                        ? right.worker == null ? 0 : -1
+                        : left.worker.compareTo(right.worker);
             };
         }
 
@@ -580,8 +620,8 @@ public class WorkerCoordinator extends AbstractCoordinator implements Closeable 
             return (left, right) -> {
                 int res = left.tasks.size() - right.tasks.size();
                 return res != 0 ? res : left.worker == null
-                                        ? right.worker == null ? 0 : -1
-                                        : left.worker.compareTo(right.worker);
+                        ? right.worker == null ? 0 : -1
+                        : left.worker.compareTo(right.worker);
             };
         }
 

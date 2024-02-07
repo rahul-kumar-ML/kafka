@@ -22,6 +22,8 @@ import java.util.Locale;
 import static org.apache.kafka.connect.runtime.distributed.ConnectProtocol.CONNECT_PROTOCOL_V0;
 import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeConnectProtocol.CONNECT_PROTOCOL_V1;
 import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeConnectProtocol.CONNECT_PROTOCOL_V2;
+import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeAPMConnectProtocol.CONNECT_PROTOCOL_V3;
+import static org.apache.kafka.connect.runtime.distributed.IncrementalCooperativeAPMConnectProtocol.CONNECT_PROTOCOL_V4;
 
 /**
  * An enumeration of the modes available to the worker to signal which Connect protocols are
@@ -73,6 +75,30 @@ public enum ConnectProtocolCompatibility {
         public short protocolVersion() {
             return CONNECT_PROTOCOL_V2;
         }
+    },
+
+    APM_COMPATIBLE {
+        @Override
+        public String protocol() {
+            return "apm_compatible";
+        }
+
+        @Override
+        public short protocolVersion() {
+            return CONNECT_PROTOCOL_V3;
+        }
+    },
+
+    APM_SESSIONED {
+        @Override
+        public String protocol() {
+            return "apm_sessioned";
+        }
+
+        @Override
+        public short protocolVersion() {
+            return CONNECT_PROTOCOL_V4;
+        }
     };
 
     /**
@@ -106,6 +132,10 @@ public enum ConnectProtocolCompatibility {
                 return COMPATIBLE;
             case CONNECT_PROTOCOL_V2:
                 return SESSIONED;
+            case CONNECT_PROTOCOL_V3:
+                return APM_COMPATIBLE;
+            case CONNECT_PROTOCOL_V4:
+                return APM_SESSIONED;
             default:
                 throw new IllegalArgumentException("Unknown Connect protocol version: " + protocolVersion);
         }
